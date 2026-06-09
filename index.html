@@ -1,0 +1,564 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Largent</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Source+Sans+3:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <link rel="icon" type="image/png" href="./largent-black.png" />
+  <link rel="stylesheet" href="./style.css" />
+</head>
+<body>
+  <a class="skip-link" href="#main">Skip to main content</a>
+
+  <header class="site-header">
+    <div class="brand">
+      <img class="brand-mark" src="./largent-black.png" alt="Largent app icon" />
+      <span>Largent</span>
+    </div>
+    <button class="header-link" type="button" data-open-auth="login" id="header-auth-button">Log In</button>
+  </header>
+
+  <main id="main" class="app-shell">
+    <section class="screen screen-active" data-screen="landing" aria-labelledby="welcome-title">
+      <div class="hero">
+        <div class="hero-panel hero-panel-green">
+          <div class="hero-visual">
+            <div class="hero-brand-block">
+              <img class="hero-logo" src="./largent-translucent2.png" alt="Largent logo" />
+              <div class="hero-brand-copy">
+                <p class="hero-tagline">Budget. Plan. Grow.</p>
+                <p class="hero-support">A cleaner way to see your money every month.</p>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="hero-panel hero-panel-white">
+          <article class="welcome-card">
+            <p class="eyebrow">Monthly money, made clearer</p>
+            <h1 id="welcome-title">Budget from your real income.</h1>
+            <p class="lede">Estimate take-home pay, shape your monthly ledger, and track spending without the clutter.</p>
+            <div class="hero-benefits" aria-label="Product benefits">
+              <div class="benefit-chip">
+                <img class="benefit-icon" src="./largent-black.png" alt="" aria-hidden="true" />
+                <span>Track Your True Income</span>
+              </div>
+              <div class="benefit-chip">
+                <img class="benefit-icon" src="./largent-black.png" alt="" aria-hidden="true" />
+                <span>Balance Your Monthly Ledger Easily</span>
+              </div>
+              <div class="benefit-chip">
+                <img class="benefit-icon" src="./largent-black.png" alt="" aria-hidden="true" />
+                <span>Manage Your Spending Process</span>
+              </div>
+            </div>
+            <div class="actions">
+              <button class="button button-primary" type="button" data-open-auth="signup">Get Started</button>
+              <button class="button button-secondary" type="button" data-open-auth="login">Open Login</button>
+            </div>
+            <p class="microcopy">Free to start.</p>
+          </article>
+        </div>
+      </div>
+    </section>
+
+    <section class="screen" data-screen="step-a" aria-labelledby="step-a-title">
+      <div class="flow-layout">
+        <div class="flow-card card">
+          <div class="flow-head">
+            <h2 id="step-a-title">Estimate your monthly income.</h2>
+            <ol class="step-list step-list-inline" aria-label="Step A progress">
+              <li class="step-item step-item-active" data-step-indicator="1" role="button" tabindex="0" aria-disabled="false">
+                <strong>Choose method</strong>
+              </li>
+              <li class="step-item" data-step-indicator="2" role="button" tabindex="-1" aria-disabled="true">
+                <strong>Salary</strong>
+              </li>
+              <li class="step-item" data-step-indicator="3" role="button" tabindex="-1" aria-disabled="true">
+                <strong>Deductions</strong>
+              </li>
+              <li class="step-item" data-step-indicator="4" role="button" tabindex="-1" aria-disabled="true">
+                <strong>Results</strong>
+              </li>
+            </ol>
+            <p class="step-counter">Step <span id="step-number">1</span> of 4</p>
+          </div>
+
+          <section class="flow-step flow-step-active" data-step="1">
+            <h3>How would you like to start?</h3>
+            <p class="helper">Choose the path that fits your income best. You can refine this later.</p>
+            <div class="option-grid" role="radiogroup" aria-label="Income method">
+              <button class="option-card option-card-active" type="button" role="radio" aria-checked="true" data-method="salary">
+                <span class="option-card-radio" aria-hidden="true"></span>
+                <strong>Estimate from salary</strong>
+                <span>Best for salaried income with taxes and deductions.</span>
+              </button>
+              <button class="option-card" type="button" role="radio" aria-checked="false" data-method="manual">
+                <span class="option-card-radio" aria-hidden="true"></span>
+                <strong>Enter monthly take-home</strong>
+                <span>Best for hourly, freelance, tipped, or variable income.</span>
+              </button>
+            </div>
+          </section>
+
+          <section class="flow-step" data-step="2">
+            <h3>Tell us the basics.</h3>
+            <p class="helper">We’ll use this to shape the first monthly income estimate.</p>
+            <div class="field-grid">
+              <label class="field">
+                <span>Annual salary</span>
+                <input id="annual-salary" type="text" placeholder="$85,000" />
+              </label>
+              <label class="field">
+                <span>State</span>
+                <select id="state-select">
+                  <option>Select your state</option>
+                </select>
+              </label>
+              <label class="field">
+                <span>Filing status</span>
+                <select id="filing-status">
+                  <option>Single</option>
+                  <option>Married Filing Jointly</option>
+                  <option>Married Filing Separately</option>
+                  <option>Head of Household</option>
+                </select>
+              </label>
+              <label class="field">
+                <span>Pay frequency</span>
+                <select id="pay-frequency">
+                  <option>Biweekly</option>
+                  <option>Monthly</option>
+                  <option>Semi-monthly</option>
+                  <option>Weekly</option>
+                </select>
+              </label>
+            </div>
+          </section>
+
+          <section class="flow-step" data-step="3">
+            <h3>Add deductions.</h3>
+            <p class="helper">Some people think in yearly dollars. Others know their paycheck percentages. We support both.</p>
+            <div class="deduction-list">
+              <article class="deduction-card">
+                <div class="deduction-head">
+                  <div>
+                    <strong>401(k)</strong>
+                    <p>Choose the format that matches how you usually think about this deduction.</p>
+                  </div>
+                </div>
+                <div class="deduction-controls">
+                  <label class="tax-switch" aria-label="401k tax treatment">
+                    <input class="tax-switch-input" type="checkbox" data-tax-switch="401k" checked />
+                    <span class="tax-switch-ui" aria-hidden="true">
+                      <span class="tax-switch-state tax-switch-state-on">Pre-tax</span>
+                      <span class="tax-switch-state tax-switch-state-off">Post-tax</span>
+                      <span class="tax-switch-thumb"></span>
+                    </span>
+                  </label>
+                </div>
+                <div class="field-grid field-grid-tight">
+                  <label class="field deduction-field deduction-field-active" data-deduction-field="401k" data-mode="yearly">
+                    <span>Yearly $</span>
+                    <input type="text" inputmode="decimal" autocomplete="off" data-deduction-input="401k" data-mode="yearly" />
+                  </label>
+                  <label class="field deduction-field" data-deduction-field="401k" data-mode="percent">
+                    <span>% of paycheck</span>
+                    <input type="text" inputmode="decimal" autocomplete="off" data-deduction-input="401k" data-mode="percent" />
+                  </label>
+                </div>
+                <p class="deduction-reflection" data-deduction-reflection="401k">Start with either field and the matching yearly amount or paycheck percentage will update automatically.</p>
+              </article>
+
+              <article class="deduction-card">
+                <div class="deduction-head">
+                  <div>
+                    <strong>Roth</strong>
+                    <p>Capture either a yearly contribution or a contribution rate.</p>
+                  </div>
+                </div>
+                <div class="deduction-controls">
+                  <label class="tax-switch" aria-label="Roth tax treatment">
+                    <input class="tax-switch-input" type="checkbox" data-tax-switch="roth" />
+                    <span class="tax-switch-ui" aria-hidden="true">
+                      <span class="tax-switch-state tax-switch-state-on">Pre-tax</span>
+                      <span class="tax-switch-state tax-switch-state-off">Post-tax</span>
+                      <span class="tax-switch-thumb"></span>
+                    </span>
+                  </label>
+                </div>
+                <div class="field-grid field-grid-tight">
+                  <label class="field deduction-field deduction-field-active" data-deduction-field="roth" data-mode="yearly">
+                    <span>Yearly $</span>
+                    <input type="text" inputmode="decimal" autocomplete="off" data-deduction-input="roth" data-mode="yearly" />
+                  </label>
+                  <label class="field deduction-field" data-deduction-field="roth" data-mode="percent">
+                    <span>% of paycheck</span>
+                    <input type="text" inputmode="decimal" autocomplete="off" data-deduction-input="roth" data-mode="percent" />
+                  </label>
+                </div>
+                <p class="deduction-reflection" data-deduction-reflection="roth">Start with either field and the matching yearly amount or paycheck percentage will update automatically.</p>
+              </article>
+
+              <article class="deduction-card">
+                <div class="deduction-head">
+                  <div>
+                    <strong>HSA</strong>
+                    <p>Keep this simple and add only what matters for the first estimate.</p>
+                  </div>
+                </div>
+                <div class="deduction-controls">
+                  <label class="tax-switch" aria-label="HSA tax treatment">
+                    <input class="tax-switch-input" type="checkbox" data-tax-switch="hsa" checked />
+                    <span class="tax-switch-ui" aria-hidden="true">
+                      <span class="tax-switch-state tax-switch-state-on">Pre-tax</span>
+                      <span class="tax-switch-state tax-switch-state-off">Post-tax</span>
+                      <span class="tax-switch-thumb"></span>
+                    </span>
+                  </label>
+                </div>
+                <div class="field-grid field-grid-tight">
+                  <label class="field deduction-field deduction-field-active" data-deduction-field="hsa" data-mode="yearly">
+                    <span>Yearly $</span>
+                    <input type="text" inputmode="decimal" autocomplete="off" data-deduction-input="hsa" data-mode="yearly" />
+                  </label>
+                  <label class="field deduction-field" data-deduction-field="hsa" data-mode="percent">
+                    <span>% of paycheck</span>
+                    <input type="text" inputmode="decimal" autocomplete="off" data-deduction-input="hsa" data-mode="percent" />
+                  </label>
+                </div>
+                <p class="deduction-reflection" data-deduction-reflection="hsa">Start with either field and the matching yearly amount or paycheck percentage will update automatically.</p>
+              </article>
+
+              <article class="deduction-card">
+                <div class="deduction-head">
+                  <div>
+                    <strong>Extra withholding</strong>
+                    <p>Optional if you want your estimate to feel closer to your actual paycheck.</p>
+                  </div>
+                </div>
+                <div class="deduction-controls">
+                  <label class="tax-switch" aria-label="Extra withholding tax treatment">
+                    <input class="tax-switch-input" type="checkbox" data-tax-switch="extra-withholding" />
+                    <span class="tax-switch-ui" aria-hidden="true">
+                      <span class="tax-switch-state tax-switch-state-on">Pre-tax</span>
+                      <span class="tax-switch-state tax-switch-state-off">Post-tax</span>
+                      <span class="tax-switch-thumb"></span>
+                    </span>
+                  </label>
+                </div>
+                <div class="field-grid field-grid-tight">
+                  <label class="field">
+                    <span>Yearly amount</span>
+                    <input id="extra-withholding" type="text" inputmode="decimal" autocomplete="off" />
+                  </label>
+                </div>
+              </article>
+            </div>
+          </section>
+
+          <section class="flow-step" data-step="4">
+            <h3>Your estimated monthly take-home</h3>
+            <p class="helper">This preview becomes the starting point for your dashboard and monthly ledger.</p>
+            <div class="summary-card">
+              <div class="summary-total">
+                <span>Estimated monthly net</span>
+                <strong id="summary-net-monthly">$0</strong>
+              </div>
+              <div class="summary-grid">
+                <div>
+                  <span>Gross monthly</span>
+                  <strong id="summary-gross-monthly">$0</strong>
+                </div>
+                <div>
+                  <span>Federal tax</span>
+                  <strong id="summary-federal-monthly">$0</strong>
+                </div>
+                <div>
+                  <span>State tax</span>
+                  <strong id="summary-state-monthly">$0</strong>
+                </div>
+                <div>
+                  <span>FICA</span>
+                  <strong id="summary-fica-monthly">$0</strong>
+                </div>
+              </div>
+              <div class="breakdown-card" aria-label="Detailed calculation breakdown">
+                <div class="breakdown-row"><span>Annual gross pay</span><strong id="detail-gross-annual">$0</strong></div>
+                <div class="breakdown-row"><span>Pre-tax deductions</span><strong id="detail-pretax-annual">$0</strong></div>
+                <div class="breakdown-sublist" id="detail-pretax-list"></div>
+                <div class="breakdown-row"><span>Taxable wages before federal standard deduction</span><strong id="detail-taxable-wages">$0</strong></div>
+                <div class="breakdown-row"><span>Federal standard deduction</span><strong id="detail-federal-standard">$0</strong></div>
+                <div class="breakdown-row"><span>Federal taxable income</span><strong id="detail-federal-taxable">$0</strong></div>
+                <div class="breakdown-row"><span>Annual federal income tax</span><strong id="detail-federal-annual">$0</strong></div>
+                <div class="breakdown-row"><span>Social Security</span><strong id="detail-ss-annual">$0</strong></div>
+                <div class="breakdown-row"><span>Medicare</span><strong id="detail-medicare-annual">$0</strong></div>
+                <div class="breakdown-row"><span>State taxable income</span><strong id="detail-state-taxable">$0</strong></div>
+                <div class="breakdown-row"><span>Annual state income tax</span><strong id="detail-state-annual">$0</strong></div>
+                <div class="breakdown-row"><span>Post-tax deductions</span><strong id="detail-posttax-annual">$0</strong></div>
+                <div class="breakdown-sublist" id="detail-posttax-list"></div>
+                <div class="breakdown-row breakdown-row-total"><span>Estimated annual net pay</span><strong id="detail-net-annual">$0</strong></div>
+                <div class="breakdown-row breakdown-row-total-secondary"><span>Estimated monthly net pay</span><strong id="detail-net-monthly">$0</strong></div>
+              </div>
+              <p class="state-tax-note" id="state-tax-note"></p>
+              <p class="summary-note">This is an estimate, not tax advice. You’ll be able to edit and fine-tune this later.</p>
+            </div>
+          </section>
+
+          <div class="flow-actions">
+            <button class="button button-secondary" type="button" id="back-step" disabled>Back</button>
+            <button class="button button-primary" type="button" id="next-step">Next</button>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="screen" data-screen="allocation" aria-labelledby="allocation-title">
+      <div class="allocation-shell">
+        <header class="allocation-header">
+          <div>
+            <p class="eyebrow">Ledger Allocation</p>
+            <h2 id="allocation-title">Allocate your monthly plan.</h2>
+            <p class="allocation-subcopy"><span id="allocation-month">June 2026</span> · Monthly take-home <strong id="allocation-income">$0.00</strong></p>
+          </div>
+        </header>
+
+        <div class="allocation-top card" aria-live="polite">
+          <div class="allocation-summary allocation-summary-single">
+            <div class="allocation-metric allocation-metric-remaining">
+              <span>Remaining to allocate</span>
+              <strong id="allocation-remaining">$0.00</strong>
+            </div>
+          </div>
+        </div>
+
+        <section class="allocation-grid" aria-label="Monthly ledger allocation">
+          <article class="allocation-card card">
+            <div class="section-head">
+              <div>
+                <h3>Monthly Ledger</h3>
+                <p>Allocate every dollar before you continue.</p>
+              </div>
+            </div>
+
+            <div id="allocation-sections" class="allocation-sections"></div>
+          </article>
+        </section>
+
+        <div class="allocation-actions">
+          <button class="button button-secondary" type="button" id="allocation-back">Back</button>
+          <button class="button button-primary" type="button" id="allocation-proceed" disabled>Proceed &amp; Save</button>
+        </div>
+      </div>
+    </section>
+
+    <section class="screen" data-screen="dashboard" aria-labelledby="dashboard-title">
+      <div class="dashboard-shell">
+        <header class="dashboard-top">
+          <div>
+            <p class="eyebrow">Tracking Dashboard</p>
+            <h2 id="dashboard-title"><span id="dashboard-month-title">July 2026</span> Dashboard</h2>
+          </div>
+          <button class="button button-secondary dashboard-chip" type="button" id="dashboard-back">Back to ledger</button>
+        </header>
+
+        <div class="dashboard-sticky-strip card" aria-live="polite">
+          <span class="status-pill" id="dashboard-status-pill">Ready to track</span>
+          <div class="dashboard-strip-metrics">
+            <div class="dashboard-strip-item">
+              <span>Allocated</span>
+              <strong id="dashboard-total-allocated">$0.00</strong>
+            </div>
+            <div class="dashboard-strip-item">
+              <span>Spent</span>
+              <strong id="dashboard-total-spent">$0.00</strong>
+            </div>
+            <div class="dashboard-strip-item">
+              <span>Left to spend</span>
+              <strong id="dashboard-left-to-spend">$0.00</strong>
+            </div>
+          </div>
+        </div>
+
+        <section class="dashboard-grid" aria-label="Monthly budget dashboard">
+          <article class="overview-card card dashboard-summary-card" aria-labelledby="dashboard-title">
+            <div class="overview-head dashboard-summary-head">
+              <div>
+                <span class="metric-label">Amount remaining this month</span>
+                <strong class="metric-value" id="dashboard-main-remaining">$0.00</strong>
+              </div>
+            </div>
+          </article>
+
+          <article class="chart-card card" aria-labelledby="allocation-chart-title">
+            <div class="section-head">
+              <div>
+                <h3 id="allocation-chart-title">Allocation mix</h3>
+                <p>See which categories are getting the biggest share of your monthly plan.</p>
+              </div>
+            </div>
+
+            <div class="allocation-chart-layout">
+              <div class="allocation-donut-wrap">
+                <div class="allocation-donut" id="allocation-donut" aria-hidden="true">
+                  <div class="allocation-donut-center">
+                    <span>Total allocated</span>
+                    <strong id="allocation-donut-total">$0.00</strong>
+                  </div>
+                </div>
+              </div>
+
+              <div class="allocation-legend" id="allocation-legend"></div>
+            </div>
+          </article>
+
+          <article class="transaction-card card" aria-labelledby="transaction-entry-title">
+            <div class="transaction-head">
+              <div>
+                <h3 id="transaction-entry-title">Add spending</h3>
+                <p>Log purchases and update your month instantly.</p>
+              </div>
+            </div>
+
+            <form class="transaction-form" id="transaction-form">
+              <label class="entry-field entry-field-amount" for="transaction-amount">
+                <span class="entry-label">Amount</span>
+                <input id="transaction-amount" name="amount" type="text" inputmode="decimal" placeholder="$42.50" autocomplete="off" />
+              </label>
+
+              <div class="entry-grid">
+                <label class="entry-field" for="transaction-date">
+                  <span class="entry-label">Date purchased</span>
+                  <input id="transaction-date" name="date" type="date" />
+                </label>
+
+                <label class="entry-field" for="transaction-category">
+                  <span class="entry-label">Category</span>
+                  <select id="transaction-category" name="category"></select>
+                </label>
+              </div>
+
+              <label class="entry-field" for="transaction-memo">
+                <span class="entry-label">Memo</span>
+                <input id="transaction-memo" name="memo" type="text" placeholder="What was purchased?" autocomplete="off" />
+              </label>
+
+              <p class="form-feedback" id="transaction-feedback" role="status" aria-live="polite"></p>
+
+              <div class="transaction-submit-row">
+                <button class="button button-primary button-full" type="submit" id="transaction-submit">Add Spending</button>
+              </div>
+            </form>
+          </article>
+
+          <article class="tracking-card card" aria-labelledby="tracking-groups-title">
+            <div class="section-head">
+              <div>
+                <h3 id="tracking-groups-title">Category tracking</h3>
+                <p>Green means healthy. Yellow means watch it. Red means close to the edge.</p>
+              </div>
+            </div>
+
+            <div id="tracking-sections" class="tracking-sections"></div>
+          </article>
+
+          <article class="history-card card" aria-labelledby="transaction-history-title">
+            <div class="section-head">
+              <div>
+                <h3 id="transaction-history-title">Transaction history</h3>
+                <p>Your latest spending entries for this month.</p>
+              </div>
+            </div>
+
+            <div id="transaction-history" class="history-list"></div>
+          </article>
+        </section>
+      </div>
+    </section>
+  </main>
+
+  <div class="modal-shell" id="allocation-confirmation-modal" hidden>
+    <div class="modal-backdrop" data-close-modal="allocation-confirmation-modal"></div>
+    <div class="modal-card card" role="dialog" aria-modal="true" aria-labelledby="allocation-confirmation-title">
+      <div class="modal-copy">
+        <p class="eyebrow">Save Allocation</p>
+        <h3 id="allocation-confirmation-title">Proceed to your dashboard?</h3>
+        <p>You can come back and make changes to your monthly ledger at any time.</p>
+      </div>
+      <div class="modal-actions">
+        <button class="button button-secondary" type="button" id="allocation-confirm-cancel">Cancel</button>
+        <button class="button button-primary" type="button" id="allocation-confirm-proceed">Proceed</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="modal-shell" id="auth-modal" hidden>
+    <div class="modal-backdrop" data-close-modal="auth-modal"></div>
+    <div class="modal-card auth-modal-card card" role="dialog" aria-modal="true" aria-labelledby="auth-title">
+      <button class="modal-close" type="button" id="auth-modal-close" aria-label="Close auth modal">×</button>
+      <div class="auth-brand">
+        <img class="auth-brand-mark" src="./largent-black.png" alt="Largent app icon" />
+        <p class="eyebrow">Welcome to Largent</p>
+      </div>
+      <h2 id="auth-title">Let’s set up your monthly money view.</h2>
+      <p class="auth-modal-copy">Start quickly with a free account, then we’ll help you build your monthly plan.</p>
+
+      <div class="auth-card auth-card-modal">
+        <div class="auth-toggle" role="tablist" aria-label="Authentication mode">
+          <button class="toggle toggle-active" type="button" role="tab" aria-selected="true" data-auth-mode="signup">Sign Up</button>
+          <button class="toggle" type="button" role="tab" aria-selected="false" data-auth-mode="login">Log In</button>
+        </div>
+
+        <form class="auth-form auth-form-active" data-form="signup">
+          <div class="field-grid">
+            <label class="field">
+              <span>First name</span>
+              <input type="text" name="firstName" placeholder="Jamie" required />
+            </label>
+            <label class="field">
+              <span>Last name</span>
+              <input type="text" name="lastName" placeholder="Smith" required />
+            </label>
+          </div>
+          <label class="field">
+            <span>Email</span>
+            <input type="email" name="email" placeholder="jamie@example.com" required />
+          </label>
+          <label class="field">
+            <span>Password</span>
+            <input type="password" name="password" placeholder="Create a password" required />
+          </label>
+          <label class="field">
+            <span>Confirm password</span>
+            <input type="password" name="confirmPassword" placeholder="Confirm your password" required />
+          </label>
+          <p class="auth-feedback" id="auth-signup-feedback" role="status" aria-live="polite"></p>
+          <button class="button button-primary button-full" type="submit">Create Account</button>
+        </form>
+
+        <form class="auth-form" data-form="login">
+          <label class="field">
+            <span>Email</span>
+            <input type="email" name="email" placeholder="jamie@example.com" required />
+          </label>
+          <label class="field">
+            <span>Password</span>
+            <input type="password" name="password" placeholder="Enter your password" required />
+          </label>
+          <p class="auth-feedback" id="auth-login-feedback" role="status" aria-live="polite"></p>
+          <div class="auth-form-actions">
+            <button class="button button-primary button-full" type="submit">Continue</button>
+            <button class="text-link auth-forgot-link" type="button" id="auth-forgot-password">Forgot password?</button>
+          </div>
+        </form>
+      </div>
+    </div>
+  </div>
+
+  <script src="./state-tax-data.js"></script>
+  <script src="./script.js"></script>
+</body>
+</html>
