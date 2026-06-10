@@ -38,6 +38,7 @@ def create_app() -> Flask:
         BudgetSection,
         BudgetStatus,
         DeductionInputMode,
+        EmailEvent,
         FilingStatus,
         IncomeMethod,
         IncomeProfile,
@@ -1358,6 +1359,40 @@ def create_app() -> Flask:
         user.pw_code_updated_at = datetime.utcnow()
         return recovery_code
 
+    def format_currency_from_cents(value: int | None) -> str:
+        return f"${amount_from_cents(value):,.2f}"
+
+    def log_email_event(
+        *,
+        user: User,
+        event_type: str,
+        recipient_email: str,
+        monthly_budget: MonthlyBudget | None = None,
+        provider_status: str | None = None,
+        sent_at: datetime | None = None,
+        failed_at: datetime | None = None,
+        error_message: str | None = None,
+    ) -> None:
+        db.session.add(
+            EmailEvent(
+                user_id=user.id,
+                event_type=event_type,
+                recipient_email=recipient_email,
+                monthly_budget_id=monthly_budget.id if monthly_budget else None,
+                provider_status=provider_status,
+                sent_at=sent_at,
+                failed_at=failed_at,
+                error_message=error_message,
+            )
+        )
+
+    def should_send_email_for_preference(user: User, preference_key: str | None) -> bool:
+        if preference_key == "monthly_summary":
+            return user.monthly_summary_emails_enabled
+        if preference_key == "security":
+            return user.security_emails_enabled
+        return True
+
     def send_email(recipient_email: str, subject: str, content: str) -> None:
         if not app.config.get("MAIL_USERNAME") or not app.config.get("MAIL_PASSWORD"):
             raise RuntimeError("Mail credentials are not configured.")
@@ -1383,23 +1418,72 @@ def create_app() -> Flask:
             smtp.login(app.config["MAIL_USERNAME"], app.config["MAIL_PASSWORD"])
             smtp.send_message(message)
 
-    def send_recovery_email(recipient_email: str, recovery_code: str) -> None:
-        send_email(
-            recipient_email,
-            "Your Largent password recovery code",
-            (
+    def send_managed_email(
+        *,
+        user: User,
+        subject: str,
+        content: str,
+        event_type: str,
+        monthly_budget: MonthlyBudget | None = None,
+        preference_key: str | None = None,
+        force_send: bool = False,
+    ) -> bool:
+        if not force_send and not should_send_email_for_preference(user, preference_key):
+            log_email_event(
+                user=user,
+                event_type=event_type,
+                recipient_email=user.email,
+                monthly_budget=monthly_budget,
+                provider_status="suppressed",
+                error_message=f"Suppressed by {preference_key or 'default'} preference.",
+            )
+            db.session.commit()
+            return False
+
+        try:
+            send_email(user.email, subject, content)
+            log_email_event(
+                user=user,
+                event_type=event_type,
+                recipient_email=user.email,
+                monthly_budget=monthly_budget,
+                provider_status="sent",
+                sent_at=datetime.utcnow(),
+            )
+            db.session.commit()
+            return True
+        except Exception as error:
+            log_email_event(
+                user=user,
+                event_type=event_type,
+                recipient_email=user.email,
+                monthly_budget=monthly_budget,
+                provider_status="failed",
+                failed_at=datetime.utcnow(),
+                error_message=str(error),
+            )
+            db.session.commit()
+            raise
+
+    def send_recovery_email(user: User, recovery_code: str) -> None:
+        send_managed_email(
+            user=user,
+            subject="Your Largent password recovery code",
+            content=(
                 "Use this recovery code to reset your Largent password:\n\n"
                 f"{recovery_code}\n\n"
                 "Copy the code, return to the app, and paste it into the recovery form.\n"
                 "If you did not request this, you can ignore this email."
             ),
+            event_type="password_recovery",
+            force_send=True,
         )
 
     def send_welcome_email(user: User) -> None:
-        send_email(
-            user.email,
-            "Welcome to Largent",
-            (
+        send_managed_email(
+            user=user,
+            subject="Welcome to Largent",
+            content=(
                 f"Hi {user.first_name},\n\n"
                 "Welcome to Largent — we’re glad you’re here.\n\n"
                 "Your budget should feel clear, not overwhelming. Largent is here to help you see what’s coming in, "
@@ -1413,7 +1497,107 @@ def create_app() -> Flask:
                 "Thanks for getting started,\n"
                 "The Largent Team"
             ),
+            event_type="welcome",
+            force_send=True,
         )
+
+    def build_monthly_summary_email(user: User, budget: MonthlyBudget) -> tuple[str, str]:
+        active_categories: list[BudgetCategory] = []
+        for section in sorted(budget.sections, key=lambda item: (item.sort_order, item.created_at)):
+            active_categories.extend(
+                sorted(
+                    [category for category in section.categories if not category.is_archived],
+                    key=lambda item: (item.sort_order, item.created_at),
+                )
+            )
+
+        category_spend_totals: dict[UUID, int] = {category.id: 0 for category in active_categories}
+        spent_total_cents = 0
+        for transaction in budget.transactions:
+            if transaction.deleted_at:
+                continue
+            spent_total_cents += transaction.amount_cents
+            if transaction.budget_category_id in category_spend_totals:
+                category_spend_totals[transaction.budget_category_id] += transaction.amount_cents
+
+        left_to_spend_cents = max((budget.net_monthly_income_cents or 0) - spent_total_cents, 0)
+
+        biggest_categories = sorted(
+            active_categories,
+            key=lambda category: category.allocated_cents,
+            reverse=True,
+        )[:3]
+
+        category_lines = []
+        for category in biggest_categories:
+            spent_cents = category_spend_totals.get(category.id, 0)
+            remaining_cents = category.allocated_cents - spent_cents
+            status_label = (
+                f"{format_currency_from_cents(abs(remaining_cents))} over"
+                if remaining_cents < 0
+                else f"{format_currency_from_cents(remaining_cents)} left"
+            )
+            category_lines.append(
+                f"- {category.title}: spent {format_currency_from_cents(spent_cents)} of "
+                f"{format_currency_from_cents(category.allocated_cents)} ({status_label})"
+            )
+
+        if not category_lines:
+            category_lines.append("- No category activity yet for this month.")
+
+        subject = f"Your {budget.month_label} Largent summary"
+        content = (
+            f"Hi {user.first_name},\n\n"
+            f"Here’s your {budget.month_label} Largent recap.\n\n"
+            "Monthly snapshot\n"
+            f"- Allocated: {format_currency_from_cents(budget.allocated_total_cents)}\n"
+            f"- Spent: {format_currency_from_cents(spent_total_cents)}\n"
+            f"- Left to spend: {format_currency_from_cents(left_to_spend_cents)}\n\n"
+            "Top allocated categories\n"
+            f"{chr(10).join(category_lines)}\n\n"
+            "Want to tighten things up for next month?\n"
+            "Open Largent, review your ledger, and adjust any categories that felt too tight or too loose.\n\n"
+            "Thanks for budgeting with us,\n"
+            "The Largent Team"
+        )
+        return subject, content
+
+    def send_monthly_summary_email(user: User, budget: MonthlyBudget) -> bool:
+        subject, content = build_monthly_summary_email(user, budget)
+        return send_managed_email(
+            user=user,
+            subject=subject,
+            content=content,
+            event_type="monthly_summary",
+            monthly_budget=budget,
+            preference_key="monthly_summary",
+        )
+
+    @app.cli.command("preview-monthly-summary-email")
+    @click.option("--email", required=True, help="User email to preview the summary for.")
+    def preview_monthly_summary_email_command(email: str):
+        normalized_email = email.strip().lower()
+        user = db.session.execute(db.select(User).filter_by(email=normalized_email)).scalar_one_or_none()
+        if not user:
+            click.echo("User not found.")
+            return
+
+        budget = (
+            db.session.execute(
+                db.select(MonthlyBudget)
+                .filter_by(user_id=user.id)
+                .order_by(MonthlyBudget.budget_month.desc(), MonthlyBudget.created_at.desc())
+            )
+            .scalars()
+            .first()
+        )
+        if not budget:
+            click.echo("No monthly budget found for this user.")
+            return
+
+        subject, content = build_monthly_summary_email(user, budget)
+        click.echo(f"Subject: {subject}\n")
+        click.echo(content)
 
     def get_current_user():
         user_id = session.get("user_id")
@@ -1672,7 +1856,7 @@ def create_app() -> Flask:
         db.session.commit()
 
         try:
-            send_recovery_email(user.email, recovery_code)
+            send_recovery_email(user, recovery_code)
         except Exception:
             return jsonify({"message": "We couldn't send a recovery code right now. Please try again in a moment."}), 503
 
