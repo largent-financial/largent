@@ -14,6 +14,12 @@ const stepNumber = document.getElementById('step-number');
 const annualSalaryInput = document.getElementById('annual-salary');
 const incomeInputLabel = document.getElementById('income-input-label');
 const stepTwoHelper = document.getElementById('step-two-helper');
+const stepThreeHelper = document.getElementById('step-three-helper');
+const stepThreeManualNote = document.getElementById('step-three-manual-note');
+const stepFourHelper = document.getElementById('step-four-helper');
+const stepFourManualNote = document.getElementById('step-four-manual-note');
+const summaryGrid = document.getElementById('summary-grid');
+const breakdownCard = document.getElementById('breakdown-card');
 const payFrequencySelect = document.getElementById('pay-frequency');
 const stateSelect = document.getElementById('state-select');
 const filingStatusSelect = document.getElementById('filing-status');
@@ -40,6 +46,7 @@ const authSignupFeedback = document.getElementById('auth-signup-feedback');
 const authLoginFeedback = document.getElementById('auth-login-feedback');
 const authForgotPasswordButton = document.getElementById('auth-forgot-password');
 const passwordToggleButtons = [...document.querySelectorAll('[data-password-toggle]')];
+const quickNextButtons = [...document.querySelectorAll('[data-quick-next]')];
 const dashboardMonthTitle = document.getElementById('dashboard-month-title');
 const dashboardMainRemaining = document.getElementById('dashboard-main-remaining');
 const dashboardTotalAllocated = document.getElementById('dashboard-total-allocated');
@@ -1659,6 +1666,54 @@ function refreshAllDeductions() {
   });
 }
 
+function setManualModeDisabledState(isManual) {
+  const deductionCards = document.querySelectorAll('.deduction-card');
+
+  deductionCards.forEach(card => {
+    card.classList.toggle('manual-disabled', isManual);
+  });
+
+  taxSwitches.forEach(input => {
+    input.disabled = isManual;
+  });
+
+  deductionInputs.forEach(input => {
+    input.disabled = isManual;
+  });
+
+  if (extraWithholdingInput) {
+    extraWithholdingInput.disabled = isManual;
+  }
+
+  if (summaryGrid) {
+    summaryGrid.classList.toggle('manual-disabled', isManual);
+  }
+
+  if (breakdownCard) {
+    breakdownCard.classList.toggle('manual-disabled', isManual);
+  }
+
+  if (stepThreeHelper) {
+    stepThreeHelper.textContent = isManual
+      ? 'This step stays in the flow, but the inputs are paused because your monthly net is already known.'
+      : 'Some people think in yearly dollars. Others know their paycheck percentages. We support both.';
+  }
+
+  if (stepThreeManualNote) {
+    stepThreeManualNote.hidden = !isManual;
+  }
+
+  if (stepFourHelper) {
+    stepFourHelper.textContent = isManual
+      ? 'We are using your entered monthly amount directly as the budget starting point.'
+      : 'This preview becomes the starting point for your dashboard and monthly ledger.';
+  }
+
+  if (stepFourManualNote) {
+    stepFourManualNote.hidden = !isManual;
+  }
+}
+
 function updateMethodUI() {
   const isManual = currentMethod === 'manual';
 
@@ -1676,6 +1731,7 @@ function updateMethodUI() {
       : 'We’ll use this to shape the first monthly income estimate.';
   }
 
+  setManualModeDisabledState(isManual);
   updateSummary();
 }
 
@@ -1691,6 +1747,15 @@ openAuthButtons.forEach(button => {
 
 authToggles.forEach(toggle => {
   toggle.addEventListener('click', () => setAuthMode(toggle.dataset.authMode));
+});
+
+quickNextButtons.forEach(button => {
+  button.addEventListener('click', () => {
+    const targetStep = Number(button.dataset.quickNext);
+    if (targetStep === currentStep) {
+      nextStepButton.click();
+    }
+  });
 });
 
 passwordToggleButtons.forEach(button => {

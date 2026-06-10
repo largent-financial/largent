@@ -146,8 +146,16 @@
           </section>
 
           <section class="flow-step" data-step="3">
-            <h3>Add deductions.</h3>
-            <p class="helper">Some people think in yearly dollars. Others know their paycheck percentages. We support both.</p>
+            <div class="flow-step-topbar">
+              <div>
+                <h3>Add deductions.</h3>
+                <p class="helper" id="step-three-helper">Some people think in yearly dollars. Others know their paycheck percentages. We support both.</p>
+              </div>
+              <button class="button button-secondary button-compact" type="button" data-quick-next="3">Next</button>
+            </div>
+            <div class="manual-mode-note" id="step-three-manual-note" hidden>
+              You entered monthly take-home directly, so deductions are skipped here because your net pay is already set.
+            </div>
             <div class="deduction-list">
               <article class="deduction-card">
                 <div class="deduction-head">
@@ -267,14 +275,22 @@
           </section>
 
           <section class="flow-step" data-step="4">
-            <h3>Your estimated monthly take-home</h3>
-            <p class="helper">This preview becomes the starting point for your dashboard and monthly ledger.</p>
+            <div class="flow-step-topbar">
+              <div>
+                <h3>Your estimated monthly take-home</h3>
+                <p class="helper" id="step-four-helper">This preview becomes the starting point for your dashboard and monthly ledger.</p>
+              </div>
+              <button class="button button-secondary button-compact" type="button" data-quick-next="4">Go To Ledger</button>
+            </div>
+            <div class="manual-mode-note" id="step-four-manual-note" hidden>
+              Because you entered monthly take-home directly, Largent is using that number as your budgeting starting point instead of estimating taxes and deductions.
+            </div>
             <div class="summary-card">
               <div class="summary-total">
                 <span>Estimated monthly net</span>
                 <strong id="summary-net-monthly">$0</strong>
               </div>
-              <div class="summary-grid">
+              <div class="summary-grid" id="summary-grid">
                 <div>
                   <span>Gross monthly</span>
                   <strong id="summary-gross-monthly">$0</strong>
@@ -292,7 +308,7 @@
                   <strong id="summary-fica-monthly">$0</strong>
                 </div>
               </div>
-              <div class="breakdown-card" aria-label="Detailed calculation breakdown">
+              <div class="breakdown-card" id="breakdown-card" aria-label="Detailed calculation breakdown">
                 <div class="breakdown-row"><span>Annual gross pay</span><strong id="detail-gross-annual">$0</strong></div>
                 <div class="breakdown-row"><span>Pre-tax deductions</span><strong id="detail-pretax-annual">$0</strong></div>
                 <div class="breakdown-sublist" id="detail-pretax-list"></div>

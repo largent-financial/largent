@@ -665,6 +665,32 @@ h3 {
   color: var(--muted);
 }
 
+.manual-mode-note {
+  margin: 12px 0 18px;
+  padding: 14px 16px;
+  border: 1px solid rgba(18, 61, 24, 0.08);
+  border-radius: var(--radius-md);
+  background: var(--surface-alt);
+  color: var(--muted);
+  font-size: 0.94rem;
+}
+
+.manual-disabled {
+  opacity: 0.52;
+}
+
+.manual-disabled,
+.manual-disabled * {
+  user-select: none;
+}
+
+.manual-disabled .field input,
+.manual-disabled .field select,
+.manual-disabled .tax-switch,
+.manual-disabled button {
+  pointer-events: none;
+}
+
 .breakdown-card {
   margin-top: 18px;
   padding: 18px;
@@ -832,9 +858,23 @@ h3 {
   outline-offset: 2px;
 }
 
+.button-compact {
+  min-height: 44px;
+  padding: 10px 16px;
+  white-space: nowrap;
+}
+
 .flow-layout {
   grid-template-columns: minmax(0, 1fr);
   padding-top: 28px;
+}
+
+.flow-step-topbar {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 14px;
+  margin-bottom: 8px;
 }
 
 .step-list {
