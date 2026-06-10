@@ -263,7 +263,15 @@ def create_app() -> Flask:
     def app_state():
         user = get_current_user()
         if not user:
-            return jsonify({"authenticated": False, "user": None}), 401
+            return jsonify(
+                {
+                    "authenticated": False,
+                    "user": None,
+                    "incomeProfile": None,
+                    "monthlyBudget": None,
+                    "hasCompletedOnboarding": False,
+                }
+            )
 
         income_profile = get_current_income_profile(user)
         monthly_budget = get_current_month_budget(user)

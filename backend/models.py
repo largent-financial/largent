@@ -13,6 +13,20 @@ def generate_uuid() -> uuid.UUID:
     return uuid.uuid4()
 
 
+def enum_values(enum_cls):
+    return [member.value for member in enum_cls]
+
+
+def pg_enum(enum_cls, name: str, create_type: bool = True):
+    return Enum(
+        enum_cls,
+        name=name,
+        values_callable=enum_values,
+        validate_strings=True,
+        create_type=create_type,
+    )
+
+
 class IncomeMethod(enum.Enum):
     SALARY = "salary"
     MANUAL = "manual"
@@ -28,23 +42,24 @@ class FilingStatus(enum.Enum):
 class PayFrequency(enum.Enum):
     WEEKLY = "weekly"
     BIWEEKLY = "biweekly"
-    SEMIMONTHLY = "semimonthly"
+    SEMIMONTHLY = "semi_monthly"
     MONTHLY = "monthly"
 
 
 class DeductionInputMode(enum.Enum):
-    AMOUNT = "amount"
-    PERCENT = "percent"
+    AMOUNT = "yearly_amount"
+    PERCENT = "percent_of_paycheck"
 
 
 class TaxTreatment(enum.Enum):
-    PRE_TAX = "pre_tax"
-    POST_TAX = "post_tax"
+    PRE_TAX = "pretax"
+    POST_TAX = "posttax"
 
 
 class BudgetStatus(enum.Enum):
     DRAFT = "draft"
     FINALIZED = "finalized"
+    ARCHIVED = "archived"
 
 
 class TokenPurpose(enum.Enum):
@@ -89,7 +104,7 @@ class AuthToken(TimestampMixin, db.Model):
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=generate_uuid)
     user_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
-    purpose: Mapped[TokenPurpose] = mapped_column(Enum(TokenPurpose, name="token_purpose"), nullable=False)
+    purpose: Mapped[TokenPurpose] = mapped_column(pg_enum(TokenPurpose, "token_purpose"), nullable=False)
     token_hash: Mapped[str] = mapped_column(String(255), nullable=False, unique=True)
     expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     used_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
@@ -106,15 +121,15 @@ class IncomeProfile(TimestampMixin, db.Model):
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=generate_uuid)
     user_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
-    income_method: Mapped[IncomeMethod] = mapped_column(Enum(IncomeMethod, name="income_method"), nullable=False)
+    income_method: Mapped[IncomeMethod] = mapped_column(pg_enum(IncomeMethod, "income_method"), nullable=False)
     annual_salary_cents: Mapped[int | None] = mapped_column(Integer)
     manual_monthly_take_home_cents: Mapped[int | None] = mapped_column(Integer)
-    state_code: Mapped[str | None] = mapped_column(String(2))
-    filing_status: Mapped[FilingStatus | None] = mapped_column(Enum(FilingStatus, name="filing_status"))
-    pay_frequency: Mapped[PayFrequency | None] = mapped_column(Enum(PayFrequency, name="pay_frequency"))
+    state_code: Mapped[str | None] = mapped_column(String(100))
+    filing_status: Mapped[FilingStatus | None] = mapped_column(pg_enum(FilingStatus, "filing_status"))
+    pay_frequency: Mapped[PayFrequency | None] = mapped_column(pg_enum(PayFrequency, "pay_frequency"))
     extra_withholding_cents: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
     extra_withholding_tax_treatment: Mapped[TaxTreatment] = mapped_column(
-        Enum(TaxTreatment, name="tax_treatment"),
+        pg_enum(TaxTreatment, "tax_treatment"),
         default=TaxTreatment.POST_TAX,
         nullable=False,
     )
@@ -149,13 +164,13 @@ class IncomeProfileDeduction(TimestampMixin, db.Model):
     deduction_key: Mapped[str] = mapped_column(String(100), nullable=False)
     title: Mapped[str] = mapped_column(String(120), nullable=False)
     input_mode: Mapped[DeductionInputMode] = mapped_column(
-        Enum(DeductionInputMode, name="deduction_input_mode"),
+        pg_enum(DeductionInputMode, "deduction_input_mode"),
         nullable=False,
     )
     annual_amount_cents: Mapped[int | None] = mapped_column(Integer)
     percent_bps: Mapped[int | None] = mapped_column(Integer)
     tax_treatment: Mapped[TaxTreatment] = mapped_column(
-        Enum(TaxTreatment, name="tax_treatment", create_type=False),
+        pg_enum(TaxTreatment, "tax_treatment", create_type=False),
         default=TaxTreatment.PRE_TAX,
         nullable=False,
     )
@@ -180,7 +195,7 @@ class MonthlyBudget(TimestampMixin, db.Model):
     net_monthly_income_cents: Mapped[int] = mapped_column(Integer, nullable=False)
     allocated_total_cents: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
     remaining_to_allocate_cents: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
-    status: Mapped[BudgetStatus] = mapped_column(Enum(BudgetStatus, name="budget_status"), default=BudgetStatus.DRAFT, nullable=False)
+    status: Mapped[BudgetStatus] = mapped_column(pg_enum(BudgetStatus, "budget_status"), default=BudgetStatus.DRAFT, nullable=False)
     finalized_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
     user: Mapped["User"] = relationship(back_populates="monthly_budgets")
