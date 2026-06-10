@@ -141,6 +141,10 @@ a {
   position: relative;
 }
 
+.header-dropdown[hidden] {
+  display: none !important;
+}
+
 .header-dropdown {
   position: absolute;
   top: calc(100% + 10px);
@@ -154,6 +158,16 @@ a {
   display: grid;
   gap: 4px;
   z-index: 30;
+  opacity: 0;
+  transform: translateY(-6px) scale(0.985);
+  pointer-events: none;
+  transition: opacity 180ms var(--ease), transform 180ms var(--ease);
+}
+
+.header-dropdown.header-dropdown-open {
+  opacity: 1;
+  transform: translateY(0) scale(1);
+  pointer-events: auto;
 }
 
 .header-dropdown-item {
@@ -839,20 +853,28 @@ h3 {
 }
 
 .profile-modal-card {
-  width: min(100%, 860px);
+  width: min(100%, 920px);
+  max-height: min(860px, calc(100dvh - 48px));
   padding: 18px;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
 }
 
 .profile-modal-layout {
   display: grid;
   grid-template-columns: 220px minmax(0, 1fr);
   gap: 18px;
+  min-height: 0;
+  height: 100%;
 }
 
 .profile-nav {
   display: grid;
   gap: 8px;
   align-content: start;
+  padding-right: 2px;
+  overflow: auto;
 }
 
 .profile-nav-item {
@@ -886,11 +908,15 @@ h3 {
 
 .profile-panel-wrap {
   min-width: 0;
+  min-height: 0;
+  overflow: auto;
+  padding-right: 4px;
 }
 
 .profile-panel {
   display: none;
   gap: 18px;
+  align-content: start;
 }
 
 .profile-panel-active {
@@ -1385,6 +1411,14 @@ h3 {
   opacity: 0;
   pointer-events: none;
   transition: opacity 180ms var(--ease);
+}
+
+.modal-shell-profile {
+  align-items: start;
+  justify-items: center;
+  overflow-y: auto;
+  padding-top: max(20px, env(safe-area-inset-top, 0px) + 12px);
+  padding-bottom: max(20px, env(safe-area-inset-bottom, 0px) + 12px);
 }
 
 .modal-shell.modal-open {
@@ -2602,6 +2636,13 @@ h3 {
 
   .profile-nav {
     grid-template-columns: repeat(2, minmax(0, 1fr));
+    overflow: visible;
+    padding-right: 0;
+  }
+
+  .profile-panel-wrap {
+    overflow: visible;
+    padding-right: 0;
   }
 }
 
@@ -2876,10 +2917,23 @@ h3 {
 
   .header-dropdown {
     min-width: 190px;
+    right: 0;
+    left: auto;
   }
 
   .profile-nav {
     grid-template-columns: 1fr;
+  }
+
+  .modal-shell-profile {
+    padding: 12px;
+    align-items: start;
+  }
+
+  .profile-modal-card {
+    width: 100%;
+    max-height: calc(100dvh - 24px);
+    padding: 16px;
   }
 
   .profile-form-actions,

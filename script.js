@@ -2282,8 +2282,13 @@ function closeHeaderMenu() {
   if (!headerAccountMenu || !headerAuthButton) {
     return;
   }
-  headerAccountMenu.hidden = true;
+  headerAccountMenu.classList.remove('header-dropdown-open');
   headerAuthButton.setAttribute('aria-expanded', 'false');
+  window.setTimeout(() => {
+    if (!headerAccountMenu.classList.contains('header-dropdown-open')) {
+      headerAccountMenu.hidden = true;
+    }
+  }, 180);
 }
 
 function openHeaderMenu() {
@@ -2292,6 +2297,7 @@ function openHeaderMenu() {
   }
   headerAccountMenu.hidden = false;
   headerAuthButton.setAttribute('aria-expanded', 'true');
+  requestAnimationFrame(() => headerAccountMenu.classList.add('header-dropdown-open'));
 }
 
 function toggleHeaderMenu() {
@@ -3520,6 +3526,20 @@ document.addEventListener('click', event => {
 
   if (!event.target.closest('.header-account')) {
     closeHeaderMenu();
+  }
+});
+
+document.addEventListener('keydown', event => {
+  if (event.key !== 'Escape') {
+    return;
+  }
+
+  if (headerAccountMenu && !headerAccountMenu.hidden) {
+    closeHeaderMenu();
+  }
+
+  if (profileModal && !profileModal.hidden) {
+    closeProfileModal();
   }
 });
 
