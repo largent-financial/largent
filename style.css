@@ -1771,6 +1771,7 @@ h3 {
 }
 
 .allocation-donut {
+  position: relative;
   width: min(100%, 250px);
   aspect-ratio: 1;
   border-radius: 50%;
@@ -1782,6 +1783,7 @@ h3 {
 
 .allocation-donut::before {
   content: '';
+  grid-area: 1 / 1;
   width: 58%;
   height: 58%;
   border-radius: 50%;
@@ -1791,10 +1793,14 @@ h3 {
 
 .allocation-donut-center {
   position: absolute;
+  inset: 0;
   display: grid;
   place-items: center;
   gap: 4px;
   text-align: center;
+  z-index: 1;
+  padding: 0 16%;
+  pointer-events: none;
 }
 
 .allocation-donut-center span {
