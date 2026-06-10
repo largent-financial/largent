@@ -330,6 +330,35 @@ def create_app() -> Flask:
             ],
         }
 
+    def serialize_plaid_review(review: PlaidTransactionReview):
+        transaction = review.plaid_transaction
+        account = transaction.plaid_account if transaction else None
+        transaction_date = transaction.posted_date or transaction.authorized_date if transaction else None
+        return {
+            "id": str(review.id),
+            "status": review.status,
+            "memo": review.memo or "",
+            "reviewedAt": review.reviewed_at.isoformat() if review.reviewed_at else None,
+            "monthlyBudgetId": str(review.monthly_budget_id) if review.monthly_budget_id else None,
+            "budgetCategoryId": str(review.budget_category_id) if review.budget_category_id else None,
+            "ledgerTransactionId": str(review.ledger_transaction_id) if review.ledger_transaction_id else None,
+            "transaction": {
+                "id": str(transaction.id),
+                "plaidTransactionId": transaction.plaid_transaction_id,
+                "name": transaction.name,
+                "merchantName": transaction.merchant_name,
+                "amount": amount_from_cents(transaction.amount_cents),
+                "date": transaction_date.isoformat() if transaction_date else None,
+                "pending": transaction.pending,
+                "paymentChannel": transaction.payment_channel,
+                "accountId": str(account.id) if account else None,
+                "accountName": account.name if account else None,
+                "accountMask": account.mask if account else None,
+                "accountSubtype": account.subtype if account else None,
+                "institutionName": transaction.plaid_item.institution_name if transaction and transaction.plaid_item else None,
+            },
+        }
+
     def cents_from_amount(value) -> int:
         return int(round(float(value or 0) * 100))
 
@@ -567,6 +596,178 @@ def create_app() -> Flask:
                 db.select(func.count(PlaidAccount.id))
                 .filter_by(user_id=user.id, is_active=True)
             ).scalar_one()
+        )
+
+    def get_active_plaid_items(user: User):
+        return (
+            db.session.execute(
+                db.select(PlaidItem)
+                .filter_by(user_id=user.id, status="active")
+                .order_by(PlaidItem.created_at.asc())
+            )
+            .scalars()
+            .all()
+        )
+
+    def parse_plaid_date(value):
+        if not value:
+            return None
+        if isinstance(value, datetime):
+            return value.date()
+        return datetime.strptime(value, "%Y-%m-%d").date()
+
+    def should_queue_plaid_transaction(transaction: PlaidTransactionRaw, budget: MonthlyBudget | None) -> bool:
+        if transaction.removed_at is not None:
+            return False
+        if transaction.amount_cents <= 0:
+            return False
+        if transaction.pending:
+            return False
+        transaction_date = transaction.posted_date or transaction.authorized_date
+        if not transaction_date or not budget:
+            return False
+        return transaction_date.year == budget.budget_month.year and transaction_date.month == budget.budget_month.month
+
+    def sync_transactions_for_item(item: PlaidItem, budget: MonthlyBudget | None):
+        access_token = decrypt_plaid_access_token(item.plaid_access_token_encrypted)
+        cursor = item.sync_cursor
+        next_cursor = cursor
+        has_more = True
+        added = []
+        modified = []
+        removed = []
+
+        while has_more:
+            request_payload = {"access_token": access_token}
+            if cursor:
+                request_payload["cursor"] = cursor
+            response = plaid_api_request("/transactions/sync", request_payload)
+            added.extend(response.get("added") or [])
+            modified.extend(response.get("modified") or [])
+            removed.extend(response.get("removed") or [])
+            has_more = bool(response.get("has_more"))
+            cursor = response.get("next_cursor")
+            next_cursor = cursor
+
+        account_map = {
+            account.plaid_account_id: account
+            for account in item.accounts
+            if account.is_active
+        }
+
+        synced_added = 0
+        queued_reviews = 0
+
+        for transaction_payload in [*added, *modified]:
+            plaid_account = account_map.get(transaction_payload.get("account_id"))
+            if not plaid_account:
+                continue
+
+            plaid_transaction = db.session.execute(
+                db.select(PlaidTransactionRaw).filter_by(plaid_transaction_id=transaction_payload["transaction_id"])
+            ).scalar_one_or_none()
+
+            if not plaid_transaction:
+                plaid_transaction = PlaidTransactionRaw(
+                    user_id=item.user_id,
+                    plaid_item_row_id=item.id,
+                    plaid_account_row_id=plaid_account.id,
+                    plaid_transaction_id=transaction_payload["transaction_id"],
+                    name=transaction_payload.get("name") or "Transaction",
+                    amount_cents=cents_from_amount(transaction_payload.get("amount")),
+                    iso_currency_code=transaction_payload.get("iso_currency_code") or "USD",
+                    raw_json=transaction_payload,
+                )
+                db.session.add(plaid_transaction)
+                synced_added += 1
+
+            plaid_transaction.plaid_item_row_id = item.id
+            plaid_transaction.plaid_account_row_id = plaid_account.id
+            plaid_transaction.pending_transaction_id = transaction_payload.get("pending_transaction_id")
+            plaid_transaction.account_owner = transaction_payload.get("account_owner")
+            plaid_transaction.name = transaction_payload.get("name") or plaid_transaction.name
+            plaid_transaction.merchant_name = transaction_payload.get("merchant_name")
+            plaid_transaction.amount_cents = cents_from_amount(transaction_payload.get("amount"))
+            plaid_transaction.iso_currency_code = transaction_payload.get("iso_currency_code") or "USD"
+            plaid_transaction.authorized_date = parse_plaid_date(transaction_payload.get("authorized_date"))
+            plaid_transaction.posted_date = parse_plaid_date(transaction_payload.get("date"))
+            category = transaction_payload.get("personal_finance_category") or {}
+            plaid_transaction.category_primary = ((transaction_payload.get("category") or [None]) + [None])[0]
+            plaid_transaction.category_detailed = ((transaction_payload.get("category") or [None, None]) + [None, None])[1]
+            plaid_transaction.personal_finance_category_primary = category.get("primary")
+            plaid_transaction.personal_finance_category_detailed = category.get("detailed")
+            plaid_transaction.payment_channel = transaction_payload.get("payment_channel")
+            plaid_transaction.transaction_type = transaction_payload.get("transaction_type")
+            plaid_transaction.pending = bool(transaction_payload.get("pending"))
+            plaid_transaction.raw_json = transaction_payload
+            plaid_transaction.removed_at = None
+
+            review = plaid_transaction.review
+            if should_queue_plaid_transaction(plaid_transaction, budget):
+                if not review:
+                    review = PlaidTransactionReview(
+                        plaid_transaction=plaid_transaction,
+                        user_id=item.user_id,
+                        monthly_budget_id=budget.id if budget else None,
+                        status="unreviewed",
+                    )
+                    db.session.add(review)
+                    queued_reviews += 1
+                elif review.status == "unreviewed":
+                    review.monthly_budget_id = budget.id if budget else None
+            elif review and review.status == "unreviewed":
+                review.monthly_budget_id = budget.id if budget else None
+
+            plaid_account.last_synced_at = datetime.utcnow()
+
+        removed_ids = []
+        for removed_payload in removed:
+            transaction_id = removed_payload.get("transaction_id") if isinstance(removed_payload, dict) else removed_payload
+            if not transaction_id:
+                continue
+            removed_ids.append(transaction_id)
+
+        if removed_ids:
+            raw_transactions = (
+                db.session.execute(
+                    db.select(PlaidTransactionRaw).filter(PlaidTransactionRaw.plaid_transaction_id.in_(removed_ids))
+                )
+                .scalars()
+                .all()
+            )
+            for raw_transaction in raw_transactions:
+                raw_transaction.removed_at = datetime.utcnow()
+                if raw_transaction.review and raw_transaction.review.status == "unreviewed":
+                    raw_transaction.review.status = "removed"
+                    raw_transaction.review.reviewed_at = datetime.utcnow()
+
+        item.sync_cursor = next_cursor
+        item.last_synced_at = datetime.utcnow()
+
+        return {
+            "added": synced_added,
+            "queued": queued_reviews,
+            "removed": len(removed_ids),
+        }
+
+    def get_plaid_review_queue(user: User, budget: MonthlyBudget | None):
+        if not budget:
+            return []
+
+        return (
+            db.session.execute(
+                db.select(PlaidTransactionReview)
+                .join(PlaidTransactionReview.plaid_transaction)
+                .where(
+                    PlaidTransactionReview.user_id == user.id,
+                    PlaidTransactionReview.status == "unreviewed",
+                    PlaidTransactionReview.monthly_budget_id == budget.id,
+                    PlaidTransactionRaw.removed_at.is_(None),
+                )
+                .order_by(PlaidTransactionRaw.posted_date.desc(), PlaidTransactionRaw.created_at.desc())
+            )
+            .scalars()
+            .all()
         )
 
     def save_income_profile(user: User, payload: dict):
@@ -873,6 +1074,164 @@ def create_app() -> Flask:
                 "summary": {
                     "activeConnectedAccounts": get_active_plaid_accounts_count(user),
                     "maxLinkedAccounts": entitlement.max_linked_accounts,
+                },
+            }
+        )
+
+    @app.post("/api/plaid/sync-transactions")
+    def sync_plaid_transactions():
+        user = get_current_user()
+        if not user:
+            return jsonify({"message": "You must be logged in to sync bank activity."}), 401
+
+        try:
+            ensure_bank_sync_access(user)
+        except PermissionError as error:
+            db.session.commit()
+            return jsonify({"message": str(error)}), 403
+
+        items = get_active_plaid_items(user)
+        if not items:
+            return jsonify({"message": "Connect a bank account before syncing transactions.", "items": [], "summary": {"queueCount": 0}}), 200
+
+        budget = get_current_month_budget(user)
+        summary = {"added": 0, "queued": 0, "removed": 0}
+
+        try:
+            for item in items:
+                result = sync_transactions_for_item(item, budget)
+                summary["added"] += result["added"]
+                summary["queued"] += result["queued"]
+                summary["removed"] += result["removed"]
+        except ValueError as error:
+            db.session.rollback()
+            return jsonify({"message": str(error)}), 502
+
+        db.session.commit()
+        reviews = get_plaid_review_queue(user, budget)
+
+        return jsonify(
+            {
+                "message": "Bank activity refreshed.",
+                "items": [serialize_plaid_review(review) for review in reviews],
+                "summary": {
+                    **summary,
+                    "queueCount": len(reviews),
+                },
+            }
+        )
+
+    @app.get("/api/plaid/review-queue")
+    def plaid_review_queue():
+        user = get_current_user()
+        if not user:
+            return jsonify({"message": "You must be logged in to view bank activity."}), 401
+
+        budget = get_current_month_budget(user)
+        reviews = get_plaid_review_queue(user, budget)
+        return jsonify(
+            {
+                "items": [serialize_plaid_review(review) for review in reviews],
+                "summary": {
+                    "queueCount": len(reviews),
+                    "monthLabel": budget.month_label if budget else None,
+                },
+            }
+        )
+
+    @app.post("/api/plaid/reviews/<uuid:review_id>/approve")
+    def approve_plaid_review(review_id):
+        user = get_current_user()
+        if not user:
+            return jsonify({"message": "You must be logged in to review bank activity."}), 401
+
+        payload = request.get_json(silent=True) or {}
+        category_id = payload.get("categoryId")
+        memo = (payload.get("memo") or "").strip()
+        if not category_id:
+            return jsonify({"message": "Choose a category before saving this transaction."}), 400
+
+        review = db.session.get(PlaidTransactionReview, review_id)
+        if not review or review.user_id != user.id:
+            return jsonify({"message": "That bank transaction could not be found."}), 404
+        if review.status != "unreviewed":
+            return jsonify({"message": "That bank transaction has already been reviewed."}), 409
+
+        budget = get_current_month_budget(user)
+        if not budget:
+            return jsonify({"message": "Save your monthly ledger before categorizing bank activity."}), 400
+
+        try:
+            category_uuid = UUID(category_id)
+        except (TypeError, ValueError):
+            return jsonify({"message": "Choose a valid category before saving."}), 400
+
+        category = db.session.get(BudgetCategory, category_uuid)
+        if not category or category.is_archived or category.budget_section.monthly_budget_id != budget.id:
+            return jsonify({"message": "That category is no longer available in your current budget."}), 400
+
+        plaid_transaction = review.plaid_transaction
+        transaction_date = plaid_transaction.posted_date or plaid_transaction.authorized_date
+        if not transaction_date:
+            return jsonify({"message": "This bank transaction does not have a usable date yet."}), 400
+
+        transaction = Transaction(
+            user_id=user.id,
+            monthly_budget_id=budget.id,
+            budget_category_id=category.id,
+            amount_cents=plaid_transaction.amount_cents,
+            purchased_on=transaction_date,
+            memo=memo or plaid_transaction.merchant_name or plaid_transaction.name,
+        )
+        db.session.add(transaction)
+        db.session.flush()
+
+        review.monthly_budget_id = budget.id
+        review.budget_category_id = category.id
+        review.ledger_transaction_id = transaction.id
+        review.status = "approved"
+        review.memo = transaction.memo or ""
+        review.reviewed_at = datetime.utcnow()
+
+        db.session.commit()
+
+        refreshed_budget = get_current_month_budget(user)
+        reviews = get_plaid_review_queue(user, refreshed_budget)
+        return jsonify(
+            {
+                "message": "Bank transaction added to your budget.",
+                "monthlyBudget": serialize_budget(refreshed_budget),
+                "reviewQueue": {
+                    "items": [serialize_plaid_review(item) for item in reviews],
+                    "summary": {"queueCount": len(reviews)},
+                },
+            }
+        )
+
+    @app.post("/api/plaid/reviews/<uuid:review_id>/dismiss")
+    def dismiss_plaid_review(review_id):
+        user = get_current_user()
+        if not user:
+            return jsonify({"message": "You must be logged in to review bank activity."}), 401
+
+        review = db.session.get(PlaidTransactionReview, review_id)
+        if not review or review.user_id != user.id:
+            return jsonify({"message": "That bank transaction could not be found."}), 404
+        if review.status != "unreviewed":
+            return jsonify({"message": "That bank transaction has already been reviewed."}), 409
+
+        review.status = "dismissed"
+        review.reviewed_at = datetime.utcnow()
+        db.session.commit()
+
+        budget = get_current_month_budget(user)
+        reviews = get_plaid_review_queue(user, budget)
+        return jsonify(
+            {
+                "message": "Bank transaction dismissed.",
+                "reviewQueue": {
+                    "items": [serialize_plaid_review(item) for item in reviews],
+                    "summary": {"queueCount": len(reviews)},
                 },
             }
         )

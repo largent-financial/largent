@@ -1590,6 +1590,7 @@ h3 {
 .transaction-card,
 .overview-card,
 .plaid-card,
+.review-card,
 .chart-card,
 .tracking-card,
 .history-card {
@@ -1720,6 +1721,166 @@ h3 {
 .plaid-empty-state {
   display: grid;
   gap: 4px;
+}
+
+.review-head {
+  align-items: center;
+}
+
+.review-refresh-button {
+  min-width: 142px;
+}
+
+.review-summary-row {
+  margin-top: 14px;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.review-stat,
+.review-item,
+.review-empty-state,
+.review-sheet-transaction,
+.review-category-option {
+  padding: 12px;
+  border-radius: var(--radius-md);
+  border: 1px solid var(--border);
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.98), rgba(247, 251, 247, 0.94));
+}
+
+.review-stat span,
+.review-item-copy span,
+.review-item-side span,
+.review-empty-state span,
+.review-sheet-transaction span,
+.review-category-copy span {
+  display: block;
+  color: var(--muted);
+}
+
+.review-stat span {
+  font-size: 0.8rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  font-weight: 700;
+}
+
+.review-stat strong {
+  display: block;
+  margin-top: 4px;
+  font-size: 1.05rem;
+  letter-spacing: -0.03em;
+}
+
+.review-feedback {
+  margin-top: 10px;
+}
+
+.review-feedback[data-tone='error'],
+.review-sheet-feedback {
+  color: #b24a2b;
+}
+
+.review-feedback[data-tone='success'] {
+  color: var(--primary-deep);
+}
+
+.review-queue-list,
+.review-sheet-category-list {
+  display: grid;
+  gap: 10px;
+}
+
+.review-item,
+.review-sheet-transaction,
+.review-category-option {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.review-item-copy strong,
+.review-item-side strong,
+.review-sheet-transaction strong,
+.review-category-copy strong {
+  display: block;
+}
+
+.review-item-side {
+  display: grid;
+  justify-items: end;
+  gap: 8px;
+}
+
+.review-item-button {
+  min-height: 40px;
+  padding: 10px 14px;
+}
+
+.review-empty-state {
+  display: grid;
+  gap: 4px;
+}
+
+.modal-shell-bottom-sheet {
+  align-items: end;
+  justify-content: center;
+}
+
+.bottom-sheet-card {
+  width: min(100%, 640px);
+  border-radius: 24px 24px 0 0;
+  padding: 22px 18px 20px;
+  transform: translateY(28px);
+}
+
+.bottom-sheet-head {
+  display: grid;
+  gap: 6px;
+}
+
+.bottom-sheet-copy {
+  margin: 0;
+  color: var(--muted);
+}
+
+.review-sheet-transaction {
+  margin-top: 16px;
+}
+
+.review-sheet-memo-field {
+  margin-top: 14px;
+}
+
+.review-sheet-memo-field input {
+  min-height: 48px;
+}
+
+.review-category-option {
+  width: 100%;
+  text-align: left;
+}
+
+.review-category-option-active {
+  border-color: rgba(53, 188, 64, 0.35);
+  background: linear-gradient(180deg, rgba(244, 252, 244, 0.98), rgba(233, 248, 234, 0.96));
+  box-shadow: 0 10px 20px rgba(53, 188, 64, 0.08);
+}
+
+.review-category-option:focus-visible,
+.review-category-option:hover {
+  border-color: rgba(18, 61, 24, 0.22);
+}
+
+.review-sheet-feedback {
+  min-height: 20px;
+  margin: 10px 0 0;
+}
+
+.review-sheet-actions {
+  margin-top: 8px;
 }
 
 .transaction-form {
@@ -2128,6 +2289,7 @@ h3 {
 
   .overview-card,
   .plaid-card,
+  .review-card,
   .chart-card,
   .tracking-card,
   .history-card {
@@ -2170,6 +2332,9 @@ h3 {
   .allocation-section-head,
   .section-head,
   .plaid-account-tile,
+  .review-item,
+  .review-sheet-transaction,
+  .review-category-option,
   .deduction-head,
   .overview-head,
   .transaction-head {
@@ -2229,6 +2394,7 @@ h3 {
   .transaction-card,
   .overview-card,
   .plaid-card,
+  .review-card,
   .tracking-card,
   .history-card {
     padding: 14px;
@@ -2411,12 +2577,30 @@ h3 {
     grid-template-columns: 1fr;
   }
 
+  .review-summary-row {
+    grid-template-columns: 1fr;
+  }
+
   .plaid-connect-button {
+    width: 100%;
+  }
+
+  .review-refresh-button {
     width: 100%;
   }
 
   .plaid-account-meta {
     text-align: left;
+  }
+
+  .review-item-side {
+    width: 100%;
+    justify-items: start;
+  }
+
+  .bottom-sheet-card {
+    width: 100%;
+    padding: 20px 16px 18px;
   }
 
   .allocation-chart-layout {

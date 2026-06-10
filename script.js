@@ -63,6 +63,20 @@ const plaidConnectButton = document.getElementById('plaid-connect-button');
 const plaidSummaryRow = document.getElementById('plaid-summary-row');
 const plaidConnectedList = document.getElementById('plaid-connected-list');
 const plaidFeedback = document.getElementById('plaid-feedback');
+const reviewRefreshButton = document.getElementById('review-refresh-button');
+const reviewSummaryRow = document.getElementById('review-summary-row');
+const reviewQueueList = document.getElementById('review-queue-list');
+const reviewFeedback = document.getElementById('review-feedback');
+const reviewSheetModal = document.getElementById('review-sheet-modal');
+const reviewSheetClose = document.getElementById('review-sheet-close');
+const reviewSheetCopy = document.getElementById('review-sheet-copy');
+const reviewSheetTransaction = document.getElementById('review-sheet-transaction');
+const reviewSheetMemo = document.getElementById('review-sheet-memo');
+const reviewSheetCategoryList = document.getElementById('review-sheet-category-list');
+const reviewSheetFeedback = document.getElementById('review-sheet-feedback');
+const reviewSheetDismiss = document.getElementById('review-sheet-dismiss');
+const reviewSheetCancel = document.getElementById('review-sheet-cancel');
+const reviewSheetSave = document.getElementById('review-sheet-save');
 const allocationDonut = document.getElementById('allocation-donut');
 const allocationDonutTotal = document.getElementById('allocation-donut-total');
 const allocationLegend = document.getElementById('allocation-legend');
@@ -116,6 +130,17 @@ let plaidState = {
   items: [],
   error: '',
   success: ''
+};
+let reviewState = {
+  loading: false,
+  syncing: false,
+  saving: false,
+  items: [],
+  summary: { queueCount: 0, monthLabel: null },
+  error: '',
+  success: '',
+  activeReviewId: null,
+  selectedCategoryId: null
 };
 let persistedAppState = {
   incomeProfile: null,
@@ -336,6 +361,7 @@ function showScreen(screenName) {
 
   if (screenName === 'dashboard' && currentUser) {
     loadPlaidStatus({ silent: true });
+    loadPlaidReviewQueue({ silent: true });
   }
 
   window.scrollTo({ top: 0, behavior: 'smooth' });
@@ -1484,6 +1510,7 @@ function renderDashboard() {
 
   renderDashboardSummary();
   renderPlaidSection();
+  renderReviewQueue();
   renderAllocationChart();
   renderTransactionCategoryOptions();
   renderTrackingSections();
@@ -1581,6 +1608,143 @@ function renderPlaidSection() {
     .join('');
 }
 
+function setReviewFeedback(message = '', tone = 'neutral') {
+  if (!reviewFeedback) {
+    return;
+  }
+
+  reviewFeedback.textContent = message;
+  reviewFeedback.dataset.tone = tone;
+}
+
+function getActiveReviewItem() {
+  return reviewState.items.find(item => item.id === reviewState.activeReviewId) || null;
+}
+
+function renderReviewQueue() {
+  if (!reviewSummaryRow || !reviewQueueList || !reviewRefreshButton) {
+    return;
+  }
+
+  const queueCount = reviewState.summary?.queueCount ?? reviewState.items.length;
+  reviewRefreshButton.disabled = reviewState.syncing || reviewState.loading || !currentUser;
+  reviewRefreshButton.textContent = reviewState.syncing ? 'Refreshing...' : 'Refresh activity';
+
+  reviewSummaryRow.innerHTML = `
+    <div class="review-stat">
+      <span>Ready to review</span>
+      <strong>${queueCount}</strong>
+    </div>
+    <div class="review-stat">
+      <span>Month</span>
+      <strong>${reviewState.summary?.monthLabel || dashboardState?.monthLabel || 'Current'}</strong>
+    </div>
+  `;
+
+  if (reviewState.error) {
+    setReviewFeedback(reviewState.error, 'error');
+  } else if (reviewState.success) {
+    setReviewFeedback(reviewState.success, 'success');
+  } else if (reviewState.loading) {
+    setReviewFeedback('Loading bank activity review queue…', 'neutral');
+  } else {
+    setReviewFeedback('Only posted debit transactions for this budget month show up here.', 'neutral');
+  }
+
+  if (!reviewState.items.length) {
+    reviewQueueList.innerHTML = `
+      <div class="review-empty-state">
+        <strong>No uncategorized bank debits right now.</strong>
+        <span>Refresh activity after new purchases post to your connected accounts.</span>
+      </div>
+    `;
+    return;
+  }
+
+  reviewQueueList.innerHTML = reviewState.items
+    .map(item => {
+      const transaction = item.transaction;
+      return `
+        <article class="review-item">
+          <div class="review-item-copy">
+            <strong>${transaction.merchantName || transaction.name}</strong>
+            <span>${formatHistoryDate(transaction.date)} · ${transaction.institutionName || 'Connected bank'}${transaction.accountMask ? ` •••• ${transaction.accountMask}` : ''}</span>
+          </div>
+          <div class="review-item-side">
+            <strong>${formatCurrencyPrecise(transaction.amount)}</strong>
+            <button class="button button-primary review-item-button" type="button" data-open-review-sheet="${item.id}">
+              Choose category
+            </button>
+          </div>
+        </article>
+      `;
+    })
+    .join('');
+}
+
+function renderReviewSheet() {
+  if (!reviewSheetTransaction || !reviewSheetCategoryList || !reviewSheetMemo || !reviewSheetCopy || !reviewSheetFeedback) {
+    return;
+  }
+
+  const activeReview = getActiveReviewItem();
+  if (!activeReview) {
+    reviewSheetTransaction.innerHTML = '';
+    reviewSheetCategoryList.innerHTML = '';
+    reviewSheetMemo.value = '';
+    reviewSheetFeedback.textContent = '';
+    return;
+  }
+
+  const transaction = activeReview.transaction;
+  reviewSheetCopy.textContent = `${formatCurrencyPrecise(transaction.amount)} from ${transaction.merchantName || transaction.name} on ${formatHistoryDate(transaction.date)}.`;
+  reviewSheetTransaction.innerHTML = `
+    <div class="review-sheet-transaction-copy">
+      <strong>${transaction.merchantName || transaction.name}</strong>
+      <span>${transaction.institutionName || 'Connected bank'}${transaction.accountName ? ` · ${transaction.accountName}` : ''}</span>
+    </div>
+    <strong>${formatCurrencyPrecise(transaction.amount)}</strong>
+  `;
+
+  const categories = getDashboardCategories().filter(category => category.allocated > 0 && category.title.trim());
+  reviewSheetCategoryList.innerHTML = categories
+    .map(category => `
+      <button
+        class="review-category-option${reviewState.selectedCategoryId === category.id ? ' review-category-option-active' : ''}"
+        type="button"
+        role="radio"
+        aria-checked="${reviewState.selectedCategoryId === category.id ? 'true' : 'false'}"
+        data-review-category="${category.id}"
+      >
+        <span class="review-category-copy">
+          <strong>${category.title}</strong>
+          <span>${formatCurrencyPrecise(category.allocated)}</span>
+        </span>
+      </button>
+    `)
+    .join('');
+
+  reviewSheetMemo.value = activeReview.memo || transaction.merchantName || transaction.name || '';
+  reviewSheetFeedback.textContent = '';
+}
+
+function openReviewSheet(reviewId) {
+  reviewState.activeReviewId = reviewId;
+  const firstCategoryId = getDashboardCategories().find(category => category.allocated > 0 && category.title.trim())?.id || null;
+  reviewState.selectedCategoryId = getActiveReviewItem()?.budgetCategoryId || firstCategoryId;
+  renderReviewSheet();
+  openModal(reviewSheetModal);
+}
+
+function closeReviewSheet() {
+  reviewState.activeReviewId = null;
+  reviewState.selectedCategoryId = null;
+  if (reviewSheetFeedback) {
+    reviewSheetFeedback.textContent = '';
+  }
+  closeModal(reviewSheetModal);
+}
+
 async function loadPlaidStatus({ silent = false } = {}) {
   if (!currentUser) {
     plaidState = {
@@ -1629,6 +1793,176 @@ async function loadPlaidStatus({ silent = false } = {}) {
   }
 }
 
+async function loadPlaidReviewQueue({ silent = false } = {}) {
+  if (!currentUser || !dashboardState) {
+    reviewState = {
+      loading: false,
+      syncing: false,
+      saving: false,
+      items: [],
+      summary: { queueCount: 0, monthLabel: null },
+      error: '',
+      success: '',
+      activeReviewId: null,
+      selectedCategoryId: null
+    };
+    renderReviewQueue();
+    return null;
+  }
+
+  reviewState.loading = true;
+  if (!silent) {
+    reviewState.error = '';
+  }
+  renderReviewQueue();
+
+  try {
+    const payload = await apiRequest('/api/plaid/review-queue');
+    reviewState = {
+      ...reviewState,
+      loading: false,
+      items: payload.items || [],
+      summary: payload.summary || { queueCount: 0, monthLabel: dashboardState.monthLabel },
+      error: ''
+    };
+    renderReviewQueue();
+    return payload;
+  } catch (error) {
+    reviewState.loading = false;
+    reviewState.error = error.status === 401 ? '' : (error.message || 'We could not load bank activity to review.');
+    renderReviewQueue();
+    return null;
+  }
+}
+
+async function syncPlaidTransactions() {
+  if (!currentUser || reviewState.syncing) {
+    return;
+  }
+
+  reviewState.syncing = true;
+  reviewState.error = '';
+  reviewState.success = '';
+  renderReviewQueue();
+
+  try {
+    const payload = await apiRequest('/api/plaid/sync-transactions', { method: 'POST' });
+    reviewState.syncing = false;
+    reviewState.items = payload.items || [];
+    reviewState.summary = payload.summary || { queueCount: reviewState.items.length, monthLabel: dashboardState?.monthLabel || null };
+    reviewState.success = payload.message || 'Bank activity refreshed.';
+    renderReviewQueue();
+  } catch (error) {
+    reviewState.syncing = false;
+    reviewState.error = error.message || 'We could not refresh bank activity right now.';
+    renderReviewQueue();
+  }
+}
+
+async function approveActiveReview() {
+  const activeReview = getActiveReviewItem();
+  if (!activeReview || !reviewState.selectedCategoryId) {
+    if (reviewSheetFeedback) {
+      reviewSheetFeedback.textContent = 'Choose a category before saving this transaction.';
+    }
+    return;
+  }
+
+  reviewState.saving = true;
+  if (reviewSheetSave) {
+    reviewSheetSave.disabled = true;
+    reviewSheetSave.textContent = 'Saving...';
+  }
+  if (reviewSheetDismiss) {
+    reviewSheetDismiss.disabled = true;
+  }
+  if (reviewSheetCancel) {
+    reviewSheetCancel.disabled = true;
+  }
+
+  try {
+    const payload = await apiRequest(`/api/plaid/reviews/${activeReview.id}/approve`, {
+      method: 'POST',
+      body: {
+        categoryId: reviewState.selectedCategoryId,
+        memo: reviewSheetMemo?.value.trim() || ''
+      }
+    });
+
+    if (payload.monthlyBudget) {
+      hydrateAllocationFromBudget(payload.monthlyBudget);
+      hydrateDashboardFromBudget(payload.monthlyBudget);
+    }
+    reviewState.items = payload.reviewQueue?.items || [];
+    reviewState.summary = payload.reviewQueue?.summary || { queueCount: reviewState.items.length, monthLabel: dashboardState?.monthLabel || null };
+    reviewState.success = payload.message || 'Bank transaction added to your budget.';
+    reviewState.error = '';
+    renderDashboard();
+    closeReviewSheet();
+  } catch (error) {
+    if (reviewSheetFeedback) {
+      reviewSheetFeedback.textContent = error.message || 'We could not save that bank transaction.';
+    }
+  } finally {
+    reviewState.saving = false;
+    if (reviewSheetSave) {
+      reviewSheetSave.disabled = false;
+      reviewSheetSave.textContent = 'Save to category';
+    }
+    if (reviewSheetDismiss) {
+      reviewSheetDismiss.disabled = false;
+    }
+    if (reviewSheetCancel) {
+      reviewSheetCancel.disabled = false;
+    }
+  }
+}
+
+async function dismissActiveReview() {
+  const activeReview = getActiveReviewItem();
+  if (!activeReview) {
+    return;
+  }
+
+  reviewState.saving = true;
+  if (reviewSheetDismiss) {
+    reviewSheetDismiss.disabled = true;
+    reviewSheetDismiss.textContent = 'Dismissing...';
+  }
+  if (reviewSheetSave) {
+    reviewSheetSave.disabled = true;
+  }
+  if (reviewSheetCancel) {
+    reviewSheetCancel.disabled = true;
+  }
+
+  try {
+    const payload = await apiRequest(`/api/plaid/reviews/${activeReview.id}/dismiss`, { method: 'POST' });
+    reviewState.items = payload.reviewQueue?.items || [];
+    reviewState.summary = payload.reviewQueue?.summary || { queueCount: reviewState.items.length, monthLabel: dashboardState?.monthLabel || null };
+    reviewState.success = payload.message || 'Bank transaction dismissed.';
+    reviewState.error = '';
+    renderReviewQueue();
+    closeReviewSheet();
+  } catch (error) {
+    if (reviewSheetFeedback) {
+      reviewSheetFeedback.textContent = error.message || 'We could not dismiss that bank transaction.';
+    }
+  } finally {
+    reviewState.saving = false;
+    if (reviewSheetDismiss) {
+      reviewSheetDismiss.disabled = false;
+      reviewSheetDismiss.textContent = 'Dismiss';
+    }
+    if (reviewSheetSave) {
+      reviewSheetSave.disabled = false;
+    }
+    if (reviewSheetCancel) {
+      reviewSheetCancel.disabled = false;
+    }
+  }
+}
+
 function destroyPlaidHandler() {
   if (plaidLinkHandler && typeof plaidLinkHandler.destroy === 'function') {
     plaidLinkHandler.destroy();
@@ -1671,6 +2005,7 @@ async function startPlaidLinkFlow() {
           plaidState.success = 'Bank account connected successfully.';
           plaidState.error = '';
           await loadPlaidStatus({ silent: true });
+          await loadPlaidReviewQueue({ silent: true });
         } catch (error) {
           plaidState.error = error.message || 'We could not finish connecting that bank.';
           plaidState.success = '';
@@ -1775,6 +2110,7 @@ function initializeDashboardScreen() {
     transactionFeedback.textContent = '';
   }
   renderDashboard();
+  loadPlaidReviewQueue({ silent: true });
 }
 
 function canOpenStep(stepIndex) {
@@ -2667,7 +3003,32 @@ authModal?.addEventListener('click', event => {
 });
 
 dashboardBackButton?.addEventListener('click', () => showScreen('allocation'));
+reviewRefreshButton?.addEventListener('click', syncPlaidTransactions);
 plaidConnectButton?.addEventListener('click', startPlaidLinkFlow);
+reviewQueueList?.addEventListener('click', event => {
+  const openButton = event.target.closest('[data-open-review-sheet]');
+  if (openButton) {
+    openReviewSheet(openButton.dataset.openReviewSheet);
+  }
+});
+reviewSheetCategoryList?.addEventListener('click', event => {
+  const option = event.target.closest('[data-review-category]');
+  if (!option) {
+    return;
+  }
+  reviewState.selectedCategoryId = option.dataset.reviewCategory;
+  renderReviewSheet();
+});
+reviewSheetClose?.addEventListener('click', closeReviewSheet);
+reviewSheetCancel?.addEventListener('click', closeReviewSheet);
+reviewSheetSave?.addEventListener('click', approveActiveReview);
+reviewSheetDismiss?.addEventListener('click', dismissActiveReview);
+reviewSheetModal?.addEventListener('click', event => {
+  const closeTarget = event.target.closest('[data-close-modal]');
+  if (closeTarget) {
+    closeReviewSheet();
+  }
+});
 allocationLegend?.addEventListener('click', handleAllocationLegendInteraction);
 transactionForm?.addEventListener('submit', handleTransactionSubmit);
 
