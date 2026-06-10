@@ -764,21 +764,37 @@ def create_app() -> Flask:
             return jsonify({"message": str(error)}), 502
 
         accounts = accounts_response.get("accounts") or []
-        selected_account_ids = {
+        metadata_accounts = metadata.get("accounts") or []
+        selected_account_ids_in_order = [
             account.get("id")
-            for account in (metadata.get("accounts") or [])
+            for account in metadata_accounts
             if account.get("id")
-        }
-        if selected_account_ids:
-            accounts = [account for account in accounts if account.get("account_id") in selected_account_ids]
+        ]
+        if selected_account_ids_in_order:
+            selected_lookup = set(selected_account_ids_in_order)
+            accounts_by_id = {
+                account.get("account_id"): account
+                for account in accounts
+                if account.get("account_id")
+            }
+            ordered_selected_accounts = [
+                accounts_by_id[account_id]
+                for account_id in selected_account_ids_in_order
+                if account_id in selected_lookup and account_id in accounts_by_id
+            ]
+            accounts = ordered_selected_accounts
+
         remaining_slots = max(0, entitlement.max_linked_accounts - active_accounts_count)
-        if len(accounts) > remaining_slots:
+        if remaining_slots <= 0:
             try:
                 plaid_api_request("/item/remove", {"access_token": access_token})
             except Exception:
                 pass
             db.session.rollback()
             return jsonify({"message": f"You can connect up to {entitlement.max_linked_accounts} bank accounts on Premium."}), 400
+
+        if len(accounts) > remaining_slots:
+            accounts = accounts[:remaining_slots]
 
         institution = metadata.get("institution") or {}
         existing_item = db.session.execute(db.select(PlaidItem).filter_by(plaid_item_id=plaid_item_id)).scalar_one_or_none()
