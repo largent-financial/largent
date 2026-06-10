@@ -360,10 +360,23 @@ h3 {
 }
 
 .benefit-icon {
-  width: 20px;
-  height: 20px;
-  border-radius: 6px;
+  width: 32px;
+  height: 32px;
+  border-radius: 10px;
   flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--primary-deep);
+  background: linear-gradient(180deg, rgba(98, 222, 106, 0.2), rgba(98, 222, 106, 0.08));
+  border: 1px solid rgba(98, 222, 106, 0.26);
+}
+
+.benefit-icon-image {
+  width: 19px;
+  height: 19px;
+  display: block;
+  object-fit: contain;
 }
 
 .actions,
