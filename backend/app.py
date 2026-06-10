@@ -301,22 +301,15 @@ def create_app() -> Flask:
         user.pw_code_updated_at = datetime.utcnow()
         return recovery_code
 
-    def send_recovery_email(recipient_email: str, recovery_code: str) -> None:
+    def send_email(recipient_email: str, subject: str, content: str) -> None:
         if not app.config.get("MAIL_USERNAME") or not app.config.get("MAIL_PASSWORD"):
             raise RuntimeError("Mail credentials are not configured.")
 
         message = EmailMessage()
-        message["Subject"] = "Your Largent password recovery code"
+        message["Subject"] = subject
         message["From"] = app.config.get("MAIL_DEFAULT_SENDER") or app.config.get("MAIL_USERNAME")
         message["To"] = recipient_email
-        message.set_content(
-            (
-                "Use this recovery code to reset your Largent password:\n\n"
-                f"{recovery_code}\n\n"
-                "Copy the code, return to the app, and paste it into the recovery form.\n"
-                "If you did not request this, you can ignore this email."
-            )
-        )
+        message.set_content(content)
 
         mail_server = app.config.get("MAIL_SERVER")
         mail_port = app.config.get("MAIL_PORT")
@@ -332,6 +325,38 @@ def create_app() -> Flask:
             smtp.starttls(context=ssl.create_default_context())
             smtp.login(app.config["MAIL_USERNAME"], app.config["MAIL_PASSWORD"])
             smtp.send_message(message)
+
+    def send_recovery_email(recipient_email: str, recovery_code: str) -> None:
+        send_email(
+            recipient_email,
+            "Your Largent password recovery code",
+            (
+                "Use this recovery code to reset your Largent password:\n\n"
+                f"{recovery_code}\n\n"
+                "Copy the code, return to the app, and paste it into the recovery form.\n"
+                "If you did not request this, you can ignore this email."
+            ),
+        )
+
+    def send_welcome_email(user: User) -> None:
+        send_email(
+            user.email,
+            "Welcome to Largent",
+            (
+                f"Hi {user.first_name},\n\n"
+                "Welcome to Largent — we’re glad you’re here.\n\n"
+                "Your budget should feel clear, not overwhelming. Largent is here to help you see what’s coming in, "
+                "decide where it should go, and stay on top of it throughout the month.\n\n"
+                "Here’s the best way to get started:\n"
+                "1. Complete your income setup\n"
+                "2. Save your monthly ledger\n"
+                "3. Log spending as it happens so your dashboard stays accurate\n"
+                "4. Revisit your categories anytime and adjust them as your month changes\n\n"
+                "Largent is built to help you budget, plan, and grow — without the clutter.\n\n"
+                "Thanks for getting started,\n"
+                "The Largent Team"
+            ),
+        )
 
     def get_current_user():
         user_id = session.get("user_id")
@@ -379,6 +404,11 @@ def create_app() -> Flask:
 
         session["user_id"] = str(user.id)
         session.permanent = True
+
+        try:
+            send_welcome_email(user)
+        except Exception:
+            pass
 
         return jsonify({"message": "Account created successfully.", "user": serialize_user(user)}), 201
 
