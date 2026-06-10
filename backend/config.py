@@ -22,6 +22,13 @@ class Config:
     MAIL_SERVER = os.getenv("MAIL_SERVER", "smtp.gmail.com")
     MAIL_PORT = int(os.getenv("MAIL_PORT", "465"))
     MAIL_USE_SSL = os.getenv("MAIL_USE_SSL", "true").lower() == "true"
+    PLAID_CLIENT_ID = os.getenv("PLAID_CLIENT_ID")
+    PLAID_SECRET = os.getenv("PLAID_SECRET")
+    PLAID_ENV = os.getenv("PLAID_ENV", "sandbox")
+    PLAID_PRODUCTS = os.getenv("PLAID_PRODUCTS", "transactions")
+    STRIPE_SECRET_KEY = os.getenv("STRIPE_SECRET_KEY")
+    STRIPE_WEBHOOK_SECRET = os.getenv("STRIPE_WEBHOOK_SECRET")
+    STRIPE_PRICE_PREMIUM_MONTHLY = os.getenv("STRIPE_PRICE_PREMIUM_MONTHLY")
     PASSWORD_RESET_TOKEN_HOURS = int(os.getenv("PASSWORD_RESET_TOKEN_HOURS", "2"))
     EMAIL_VERIFICATION_TOKEN_HOURS = int(os.getenv("EMAIL_VERIFICATION_TOKEN_HOURS", "24"))
     SESSION_COOKIE_SECURE = os.getenv("SESSION_COOKIE_SECURE", "false").lower() == "true"

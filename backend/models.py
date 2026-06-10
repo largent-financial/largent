@@ -3,7 +3,7 @@ import uuid
 from datetime import datetime
 
 from sqlalchemy import Date, DateTime, Enum, ForeignKey, Index, Integer, String, Text, UniqueConstraint, func
-from sqlalchemy.dialects.postgresql import UUID
+from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from .extensions import db
@@ -97,6 +97,13 @@ class User(TimestampMixin, db.Model):
     monthly_budgets: Mapped[list["MonthlyBudget"]] = relationship(back_populates="user", cascade="all, delete-orphan")
     transactions: Mapped[list["Transaction"]] = relationship(back_populates="user", cascade="all, delete-orphan")
     email_events: Mapped[list["EmailEvent"]] = relationship(back_populates="user", cascade="all, delete-orphan")
+    subscriptions: Mapped[list["UserSubscription"]] = relationship(back_populates="user", cascade="all, delete-orphan")
+    entitlement: Mapped["UserEntitlement | None"] = relationship(back_populates="user", cascade="all, delete-orphan", uselist=False)
+    plaid_items: Mapped[list["PlaidItem"]] = relationship(back_populates="user", cascade="all, delete-orphan")
+    plaid_accounts: Mapped[list["PlaidAccount"]] = relationship(back_populates="user", cascade="all, delete-orphan")
+    plaid_transactions: Mapped[list["PlaidTransactionRaw"]] = relationship(back_populates="user", cascade="all, delete-orphan")
+    plaid_transaction_reviews: Mapped[list["PlaidTransactionReview"]] = relationship(back_populates="user", cascade="all, delete-orphan")
+    plaid_webhook_events: Mapped[list["PlaidWebhookEvent"]] = relationship(back_populates="user", cascade="all, delete-orphan")
 
 
 class AuthToken(TimestampMixin, db.Model):
@@ -203,6 +210,7 @@ class MonthlyBudget(TimestampMixin, db.Model):
     sections: Mapped[list["BudgetSection"]] = relationship(back_populates="monthly_budget", cascade="all, delete-orphan")
     transactions: Mapped[list["Transaction"]] = relationship(back_populates="monthly_budget", cascade="all, delete-orphan")
     email_events: Mapped[list["EmailEvent"]] = relationship(back_populates="monthly_budget")
+    plaid_transaction_reviews: Mapped[list["PlaidTransactionReview"]] = relationship(back_populates="monthly_budget")
 
     __table_args__ = (
         UniqueConstraint("user_id", "budget_month", name="uq_monthly_budget_user_month"),
@@ -247,6 +255,7 @@ class BudgetCategory(TimestampMixin, db.Model):
 
     budget_section: Mapped["BudgetSection"] = relationship(back_populates="categories")
     transactions: Mapped[list["Transaction"]] = relationship(back_populates="budget_category")
+    plaid_transaction_reviews: Mapped[list["PlaidTransactionReview"]] = relationship(back_populates="budget_category")
 
 
 class Transaction(TimestampMixin, db.Model):
@@ -272,6 +281,7 @@ class Transaction(TimestampMixin, db.Model):
     user: Mapped["User"] = relationship(back_populates="transactions")
     monthly_budget: Mapped["MonthlyBudget"] = relationship(back_populates="transactions")
     budget_category: Mapped["BudgetCategory"] = relationship(back_populates="transactions")
+    plaid_transaction_reviews: Mapped[list["PlaidTransactionReview"]] = relationship(back_populates="ledger_transaction")
 
     __table_args__ = (
         Index("ix_transactions_budget_category_date", "monthly_budget_id", "budget_category_id", "purchased_on"),
@@ -296,3 +306,185 @@ class EmailEvent(TimestampMixin, db.Model):
 
     user: Mapped["User"] = relationship(back_populates="email_events")
     monthly_budget: Mapped["MonthlyBudget"] = relationship(back_populates="email_events")
+
+
+class UserSubscription(TimestampMixin, db.Model):
+    __tablename__ = "user_subscriptions"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=generate_uuid)
+    user_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
+    provider: Mapped[str] = mapped_column(String(30), nullable=False, default="stripe")
+    provider_customer_id: Mapped[str | None] = mapped_column(String(255))
+    provider_subscription_id: Mapped[str | None] = mapped_column(String(255), unique=True)
+    plan_key: Mapped[str] = mapped_column(String(50), nullable=False)
+    status: Mapped[str] = mapped_column(String(30), nullable=False)
+    current_period_start: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    current_period_end: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    cancel_at_period_end: Mapped[bool] = mapped_column(default=False, nullable=False)
+    canceled_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+    user: Mapped["User"] = relationship(back_populates="subscriptions")
+
+    __table_args__ = (
+        Index("ix_user_subscriptions_user_status", "user_id", "status"),
+    )
+
+
+class UserEntitlement(db.Model):
+    __tablename__ = "user_entitlements"
+
+    user_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), primary_key=True)
+    premium_access: Mapped[bool] = mapped_column(default=False, nullable=False)
+    bank_sync_enabled: Mapped[bool] = mapped_column(default=False, nullable=False)
+    max_linked_accounts: Mapped[int] = mapped_column(Integer, default=2, nullable=False)
+    source: Mapped[str] = mapped_column(String(30), nullable=False, default="system")
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        server_default=func.now(),
+        onupdate=func.now(),
+        nullable=False,
+    )
+
+    user: Mapped["User"] = relationship(back_populates="entitlement")
+
+
+class PlaidItem(TimestampMixin, db.Model):
+    __tablename__ = "plaid_items"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=generate_uuid)
+    user_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
+    plaid_item_id: Mapped[str] = mapped_column(String(255), nullable=False, unique=True)
+    plaid_access_token_encrypted: Mapped[str] = mapped_column(Text, nullable=False)
+    institution_id: Mapped[str | None] = mapped_column(String(255))
+    institution_name: Mapped[str | None] = mapped_column(String(255))
+    status: Mapped[str] = mapped_column(String(30), nullable=False, default="active")
+    sync_cursor: Mapped[str | None] = mapped_column(Text)
+    error_code: Mapped[str | None] = mapped_column(String(100))
+    error_message: Mapped[str | None] = mapped_column(Text)
+    last_webhook_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    last_synced_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    disconnected_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+    user: Mapped["User"] = relationship(back_populates="plaid_items")
+    accounts: Mapped[list["PlaidAccount"]] = relationship(back_populates="plaid_item", cascade="all, delete-orphan")
+    transactions: Mapped[list["PlaidTransactionRaw"]] = relationship(back_populates="plaid_item", cascade="all, delete-orphan")
+    webhook_events: Mapped[list["PlaidWebhookEvent"]] = relationship(back_populates="plaid_item", cascade="all, delete-orphan")
+
+    __table_args__ = (
+        Index("ix_plaid_items_user_status", "user_id", "status"),
+    )
+
+
+class PlaidAccount(TimestampMixin, db.Model):
+    __tablename__ = "plaid_accounts"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=generate_uuid)
+    user_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
+    plaid_item_row_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("plaid_items.id", ondelete="CASCADE"), nullable=False)
+    plaid_account_id: Mapped[str] = mapped_column(String(255), nullable=False, unique=True)
+    persistent_account_id: Mapped[str | None] = mapped_column(String(255))
+    name: Mapped[str] = mapped_column(String(255), nullable=False)
+    official_name: Mapped[str | None] = mapped_column(String(255))
+    mask: Mapped[str | None] = mapped_column(String(20))
+    type: Mapped[str] = mapped_column(String(50), nullable=False)
+    subtype: Mapped[str | None] = mapped_column(String(50))
+    is_active: Mapped[bool] = mapped_column(default=True, nullable=False)
+    last_synced_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+    user: Mapped["User"] = relationship(back_populates="plaid_accounts")
+    plaid_item: Mapped["PlaidItem"] = relationship(back_populates="accounts")
+    transactions: Mapped[list["PlaidTransactionRaw"]] = relationship(back_populates="plaid_account", cascade="all, delete-orphan")
+
+    __table_args__ = (
+        Index("ix_plaid_accounts_user_active", "user_id", "is_active"),
+        Index("ix_plaid_accounts_item_active", "plaid_item_row_id", "is_active"),
+    )
+
+
+class PlaidTransactionRaw(TimestampMixin, db.Model):
+    __tablename__ = "plaid_transactions_raw"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=generate_uuid)
+    user_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
+    plaid_item_row_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("plaid_items.id", ondelete="CASCADE"), nullable=False)
+    plaid_account_row_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("plaid_accounts.id", ondelete="CASCADE"), nullable=False)
+    plaid_transaction_id: Mapped[str] = mapped_column(String(255), nullable=False, unique=True)
+    pending_transaction_id: Mapped[str | None] = mapped_column(String(255))
+    account_owner: Mapped[str | None] = mapped_column(String(255))
+    name: Mapped[str] = mapped_column(String(255), nullable=False)
+    merchant_name: Mapped[str | None] = mapped_column(String(255))
+    amount_cents: Mapped[int] = mapped_column(Integer, nullable=False)
+    iso_currency_code: Mapped[str] = mapped_column(String(10), nullable=False, default="USD")
+    authorized_date: Mapped[datetime | None] = mapped_column(Date)
+    posted_date: Mapped[datetime | None] = mapped_column(Date)
+    category_primary: Mapped[str | None] = mapped_column(String(100))
+    category_detailed: Mapped[str | None] = mapped_column(String(150))
+    personal_finance_category_primary: Mapped[str | None] = mapped_column(String(100))
+    personal_finance_category_detailed: Mapped[str | None] = mapped_column(String(150))
+    payment_channel: Mapped[str | None] = mapped_column(String(50))
+    transaction_type: Mapped[str | None] = mapped_column(String(50))
+    pending: Mapped[bool] = mapped_column(default=False, nullable=False)
+    raw_json: Mapped[dict] = mapped_column(JSONB, nullable=False, default=dict)
+    removed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+    user: Mapped["User"] = relationship(back_populates="plaid_transactions")
+    plaid_item: Mapped["PlaidItem"] = relationship(back_populates="transactions")
+    plaid_account: Mapped["PlaidAccount"] = relationship(back_populates="transactions")
+    review: Mapped["PlaidTransactionReview | None"] = relationship(back_populates="plaid_transaction", cascade="all, delete-orphan", uselist=False)
+
+    __table_args__ = (
+        Index("ix_plaid_transactions_user_posted", "user_id", "posted_date"),
+        Index("ix_plaid_transactions_account_posted", "plaid_account_row_id", "posted_date"),
+        Index("ix_plaid_transactions_user_pending", "user_id", "pending"),
+    )
+
+
+class PlaidTransactionReview(TimestampMixin, db.Model):
+    __tablename__ = "plaid_transaction_reviews"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=generate_uuid)
+    plaid_transaction_row_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("plaid_transactions_raw.id", ondelete="CASCADE"),
+        nullable=False,
+        unique=True,
+    )
+    user_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
+    monthly_budget_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("monthly_budgets.id", ondelete="SET NULL"))
+    budget_category_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("budget_categories.id", ondelete="SET NULL"))
+    ledger_transaction_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("transactions.id", ondelete="SET NULL"))
+    status: Mapped[str] = mapped_column(String(30), nullable=False, default="unreviewed")
+    memo: Mapped[str | None] = mapped_column(String(255))
+    reviewed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+    plaid_transaction: Mapped["PlaidTransactionRaw"] = relationship(back_populates="review")
+    user: Mapped["User"] = relationship(back_populates="plaid_transaction_reviews")
+    monthly_budget: Mapped["MonthlyBudget | None"] = relationship(back_populates="plaid_transaction_reviews")
+    budget_category: Mapped["BudgetCategory | None"] = relationship(back_populates="plaid_transaction_reviews")
+    ledger_transaction: Mapped["Transaction | None"] = relationship(back_populates="plaid_transaction_reviews")
+
+    __table_args__ = (
+        Index("ix_plaid_transaction_reviews_user_status", "user_id", "status"),
+    )
+
+
+class PlaidWebhookEvent(db.Model):
+    __tablename__ = "plaid_webhook_events"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=generate_uuid)
+    user_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"))
+    plaid_item_row_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("plaid_items.id", ondelete="SET NULL"))
+    plaid_event_id: Mapped[str | None] = mapped_column(String(255))
+    webhook_type: Mapped[str] = mapped_column(String(100), nullable=False)
+    webhook_code: Mapped[str] = mapped_column(String(100), nullable=False)
+    payload: Mapped[dict] = mapped_column(JSONB, nullable=False, default=dict)
+    processed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+
+    user: Mapped["User | None"] = relationship(back_populates="plaid_webhook_events")
+    plaid_item: Mapped["PlaidItem | None"] = relationship(back_populates="webhook_events")
+
+    __table_args__ = (
+        Index("ix_plaid_webhook_events_item_created", "plaid_item_row_id", "created_at"),
+        Index("ix_plaid_webhook_events_type_code", "webhook_type", "webhook_code"),
+    )

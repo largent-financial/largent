@@ -57,7 +57,7 @@ create table income_profiles (
   income_method income_method not null,
   annual_salary_cents integer,
   manual_monthly_take_home_cents integer,
-  state_code char(2),
+  state_code varchar(100),
   filing_status filing_status,
   pay_frequency pay_frequency,
   extra_withholding_cents integer not null default 0,
@@ -207,3 +207,133 @@ create table email_events (
 
 create index email_events_user_type_idx on email_events(user_id, event_type, created_at desc);
 create index email_events_recipient_idx on email_events(recipient_email, created_at desc);
+
+create table user_subscriptions (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid not null references users(id) on delete cascade,
+  provider varchar(30) not null default 'stripe',
+  provider_customer_id varchar(255),
+  provider_subscription_id varchar(255) unique,
+  plan_key varchar(50) not null,
+  status varchar(30) not null,
+  current_period_start timestamptz,
+  current_period_end timestamptz,
+  cancel_at_period_end boolean not null default false,
+  canceled_at timestamptz,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+
+create index user_subscriptions_user_status_idx on user_subscriptions(user_id, status);
+
+create table user_entitlements (
+  user_id uuid primary key references users(id) on delete cascade,
+  premium_access boolean not null default false,
+  bank_sync_enabled boolean not null default false,
+  max_linked_accounts integer not null default 2,
+  source varchar(30) not null default 'system',
+  updated_at timestamptz not null default now(),
+  constraint user_entitlements_reasonable_limit check (max_linked_accounts >= 0 and max_linked_accounts <= 10)
+);
+
+create table plaid_items (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid not null references users(id) on delete cascade,
+  plaid_item_id varchar(255) not null unique,
+  plaid_access_token_encrypted text not null,
+  institution_id varchar(255),
+  institution_name varchar(255),
+  status varchar(30) not null default 'active',
+  sync_cursor text,
+  error_code varchar(100),
+  error_message text,
+  last_webhook_at timestamptz,
+  last_synced_at timestamptz,
+  disconnected_at timestamptz,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+
+create index plaid_items_user_status_idx on plaid_items(user_id, status);
+
+create table plaid_accounts (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid not null references users(id) on delete cascade,
+  plaid_item_row_id uuid not null references plaid_items(id) on delete cascade,
+  plaid_account_id varchar(255) not null unique,
+  persistent_account_id varchar(255),
+  name varchar(255) not null,
+  official_name varchar(255),
+  mask varchar(20),
+  type varchar(50) not null,
+  subtype varchar(50),
+  is_active boolean not null default true,
+  last_synced_at timestamptz,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+
+create index plaid_accounts_user_active_idx on plaid_accounts(user_id, is_active);
+create index plaid_accounts_item_active_idx on plaid_accounts(plaid_item_row_id, is_active);
+
+create table plaid_transactions_raw (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid not null references users(id) on delete cascade,
+  plaid_item_row_id uuid not null references plaid_items(id) on delete cascade,
+  plaid_account_row_id uuid not null references plaid_accounts(id) on delete cascade,
+  plaid_transaction_id varchar(255) not null unique,
+  pending_transaction_id varchar(255),
+  account_owner varchar(255),
+  name varchar(255) not null,
+  merchant_name varchar(255),
+  amount_cents integer not null,
+  iso_currency_code varchar(10) not null default 'USD',
+  authorized_date date,
+  posted_date date,
+  category_primary varchar(100),
+  category_detailed varchar(150),
+  personal_finance_category_primary varchar(100),
+  personal_finance_category_detailed varchar(150),
+  payment_channel varchar(50),
+  transaction_type varchar(50),
+  pending boolean not null default false,
+  raw_json jsonb not null default '{}'::jsonb,
+  removed_at timestamptz,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+
+create index plaid_transactions_user_posted_idx on plaid_transactions_raw(user_id, posted_date desc);
+create index plaid_transactions_account_posted_idx on plaid_transactions_raw(plaid_account_row_id, posted_date desc);
+create index plaid_transactions_user_pending_idx on plaid_transactions_raw(user_id, pending);
+
+create table plaid_transaction_reviews (
+  id uuid primary key default gen_random_uuid(),
+  plaid_transaction_row_id uuid not null unique references plaid_transactions_raw(id) on delete cascade,
+  user_id uuid not null references users(id) on delete cascade,
+  monthly_budget_id uuid references monthly_budgets(id) on delete set null,
+  budget_category_id uuid references budget_categories(id) on delete set null,
+  ledger_transaction_id uuid references transactions(id) on delete set null,
+  status varchar(30) not null default 'unreviewed',
+  memo varchar(255),
+  reviewed_at timestamptz,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+
+create index plaid_transaction_reviews_user_status_idx on plaid_transaction_reviews(user_id, status);
+
+create table plaid_webhook_events (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid references users(id) on delete set null,
+  plaid_item_row_id uuid references plaid_items(id) on delete set null,
+  plaid_event_id varchar(255),
+  webhook_type varchar(100) not null,
+  webhook_code varchar(100) not null,
+  payload jsonb not null default '{}'::jsonb,
+  processed_at timestamptz,
+  created_at timestamptz not null default now()
+);
+
+create index plaid_webhook_events_item_created_idx on plaid_webhook_events(plaid_item_row_id, created_at desc);
+create index plaid_webhook_events_type_code_idx on plaid_webhook_events(webhook_type, webhook_code);

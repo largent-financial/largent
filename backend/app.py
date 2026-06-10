@@ -37,9 +37,16 @@ def create_app() -> Flask:
         IncomeProfileDeduction,
         MonthlyBudget,
         PayFrequency,
+        PlaidAccount,
+        PlaidItem,
+        PlaidTransactionRaw,
+        PlaidTransactionReview,
+        PlaidWebhookEvent,
         TaxTreatment,
         Transaction,
         User,
+        UserEntitlement,
+        UserSubscription,
     )
 
     @app.cli.command("init-db")
@@ -80,12 +87,223 @@ def create_app() -> Flask:
             db.session.commit()
         click.echo("Auth recovery columns synced.")
 
+    @app.cli.command("sync-banking-billing-schema")
+    def sync_banking_billing_schema_command():
+        raw_connection = db.engine.raw_connection()
+        try:
+            with raw_connection.cursor() as cursor:
+                cursor.execute(
+                    """
+                    create table if not exists user_subscriptions (
+                      id uuid primary key default gen_random_uuid(),
+                      user_id uuid not null references users(id) on delete cascade,
+                      provider varchar(30) not null default 'stripe',
+                      provider_customer_id varchar(255),
+                      provider_subscription_id varchar(255) unique,
+                      plan_key varchar(50) not null,
+                      status varchar(30) not null,
+                      current_period_start timestamptz,
+                      current_period_end timestamptz,
+                      cancel_at_period_end boolean not null default false,
+                      canceled_at timestamptz,
+                      created_at timestamptz not null default now(),
+                      updated_at timestamptz not null default now()
+                    );
+                    create index if not exists user_subscriptions_user_status_idx on user_subscriptions(user_id, status);
+
+                    create table if not exists user_entitlements (
+                      user_id uuid primary key references users(id) on delete cascade,
+                      premium_access boolean not null default false,
+                      bank_sync_enabled boolean not null default false,
+                      max_linked_accounts integer not null default 2,
+                      source varchar(30) not null default 'system',
+                      updated_at timestamptz not null default now()
+                    );
+
+                    create table if not exists plaid_items (
+                      id uuid primary key default gen_random_uuid(),
+                      user_id uuid not null references users(id) on delete cascade,
+                      plaid_item_id varchar(255) not null unique,
+                      plaid_access_token_encrypted text not null,
+                      institution_id varchar(255),
+                      institution_name varchar(255),
+                      status varchar(30) not null default 'active',
+                      sync_cursor text,
+                      error_code varchar(100),
+                      error_message text,
+                      last_webhook_at timestamptz,
+                      last_synced_at timestamptz,
+                      disconnected_at timestamptz,
+                      created_at timestamptz not null default now(),
+                      updated_at timestamptz not null default now()
+                    );
+                    create index if not exists plaid_items_user_status_idx on plaid_items(user_id, status);
+
+                    create table if not exists plaid_accounts (
+                      id uuid primary key default gen_random_uuid(),
+                      user_id uuid not null references users(id) on delete cascade,
+                      plaid_item_row_id uuid not null references plaid_items(id) on delete cascade,
+                      plaid_account_id varchar(255) not null unique,
+                      persistent_account_id varchar(255),
+                      name varchar(255) not null,
+                      official_name varchar(255),
+                      mask varchar(20),
+                      type varchar(50) not null,
+                      subtype varchar(50),
+                      is_active boolean not null default true,
+                      last_synced_at timestamptz,
+                      created_at timestamptz not null default now(),
+                      updated_at timestamptz not null default now()
+                    );
+                    create index if not exists plaid_accounts_user_active_idx on plaid_accounts(user_id, is_active);
+                    create index if not exists plaid_accounts_item_active_idx on plaid_accounts(plaid_item_row_id, is_active);
+
+                    create table if not exists plaid_transactions_raw (
+                      id uuid primary key default gen_random_uuid(),
+                      user_id uuid not null references users(id) on delete cascade,
+                      plaid_item_row_id uuid not null references plaid_items(id) on delete cascade,
+                      plaid_account_row_id uuid not null references plaid_accounts(id) on delete cascade,
+                      plaid_transaction_id varchar(255) not null unique,
+                      pending_transaction_id varchar(255),
+                      account_owner varchar(255),
+                      name varchar(255) not null,
+                      merchant_name varchar(255),
+                      amount_cents integer not null,
+                      iso_currency_code varchar(10) not null default 'USD',
+                      authorized_date date,
+                      posted_date date,
+                      category_primary varchar(100),
+                      category_detailed varchar(150),
+                      personal_finance_category_primary varchar(100),
+                      personal_finance_category_detailed varchar(150),
+                      payment_channel varchar(50),
+                      transaction_type varchar(50),
+                      pending boolean not null default false,
+                      raw_json jsonb not null default '{}'::jsonb,
+                      removed_at timestamptz,
+                      created_at timestamptz not null default now(),
+                      updated_at timestamptz not null default now()
+                    );
+                    create index if not exists plaid_transactions_user_posted_idx on plaid_transactions_raw(user_id, posted_date desc);
+                    create index if not exists plaid_transactions_account_posted_idx on plaid_transactions_raw(plaid_account_row_id, posted_date desc);
+                    create index if not exists plaid_transactions_user_pending_idx on plaid_transactions_raw(user_id, pending);
+
+                    create table if not exists plaid_transaction_reviews (
+                      id uuid primary key default gen_random_uuid(),
+                      plaid_transaction_row_id uuid not null unique references plaid_transactions_raw(id) on delete cascade,
+                      user_id uuid not null references users(id) on delete cascade,
+                      monthly_budget_id uuid references monthly_budgets(id) on delete set null,
+                      budget_category_id uuid references budget_categories(id) on delete set null,
+                      ledger_transaction_id uuid references transactions(id) on delete set null,
+                      status varchar(30) not null default 'unreviewed',
+                      memo varchar(255),
+                      reviewed_at timestamptz,
+                      created_at timestamptz not null default now(),
+                      updated_at timestamptz not null default now()
+                    );
+                    create index if not exists plaid_transaction_reviews_user_status_idx on plaid_transaction_reviews(user_id, status);
+
+                    create table if not exists plaid_webhook_events (
+                      id uuid primary key default gen_random_uuid(),
+                      user_id uuid references users(id) on delete set null,
+                      plaid_item_row_id uuid references plaid_items(id) on delete set null,
+                      plaid_event_id varchar(255),
+                      webhook_type varchar(100) not null,
+                      webhook_code varchar(100) not null,
+                      payload jsonb not null default '{}'::jsonb,
+                      processed_at timestamptz,
+                      created_at timestamptz not null default now()
+                    );
+                    create index if not exists plaid_webhook_events_item_created_idx on plaid_webhook_events(plaid_item_row_id, created_at desc);
+                    create index if not exists plaid_webhook_events_type_code_idx on plaid_webhook_events(webhook_type, webhook_code);
+                    """
+                )
+            raw_connection.commit()
+        finally:
+            raw_connection.close()
+
+        db.session.execute(
+            db.text(
+                """
+                insert into user_entitlements (user_id, premium_access, bank_sync_enabled, max_linked_accounts, source, updated_at)
+                select id, false, false, 2, 'system', now()
+                from users
+                on conflict (user_id) do nothing
+                """
+            )
+        )
+        db.session.commit()
+        click.echo("Banking and billing schema synced.")
+
     def serialize_user(user: User):
         return {
             "id": str(user.id),
             "email": user.email,
             "firstName": user.first_name,
             "lastName": user.last_name,
+        }
+
+    def serialize_subscription(subscription: UserSubscription | None):
+        if not subscription:
+            return None
+
+        return {
+            "id": str(subscription.id),
+            "provider": subscription.provider,
+            "planKey": subscription.plan_key,
+            "status": subscription.status,
+            "providerCustomerId": subscription.provider_customer_id,
+            "providerSubscriptionId": subscription.provider_subscription_id,
+            "currentPeriodStart": subscription.current_period_start.isoformat() if subscription.current_period_start else None,
+            "currentPeriodEnd": subscription.current_period_end.isoformat() if subscription.current_period_end else None,
+            "cancelAtPeriodEnd": subscription.cancel_at_period_end,
+            "canceledAt": subscription.canceled_at.isoformat() if subscription.canceled_at else None,
+        }
+
+    def serialize_entitlement(entitlement: UserEntitlement | None):
+        if not entitlement:
+            return {
+                "premiumAccess": False,
+                "bankSyncEnabled": False,
+                "maxLinkedAccounts": 2,
+                "source": "system",
+            }
+
+        return {
+            "premiumAccess": entitlement.premium_access,
+            "bankSyncEnabled": entitlement.bank_sync_enabled,
+            "maxLinkedAccounts": entitlement.max_linked_accounts,
+            "source": entitlement.source,
+        }
+
+    def serialize_plaid_account(account: PlaidAccount):
+        return {
+            "id": str(account.id),
+            "plaidAccountId": account.plaid_account_id,
+            "persistentAccountId": account.persistent_account_id,
+            "name": account.name,
+            "officialName": account.official_name,
+            "mask": account.mask,
+            "type": account.type,
+            "subtype": account.subtype,
+            "isActive": account.is_active,
+            "lastSyncedAt": account.last_synced_at.isoformat() if account.last_synced_at else None,
+        }
+
+    def serialize_plaid_item(item: PlaidItem):
+        return {
+            "id": str(item.id),
+            "plaidItemId": item.plaid_item_id,
+            "institutionId": item.institution_id,
+            "institutionName": item.institution_name,
+            "status": item.status,
+            "lastWebhookAt": item.last_webhook_at.isoformat() if item.last_webhook_at else None,
+            "lastSyncedAt": item.last_synced_at.isoformat() if item.last_synced_at else None,
+            "disconnectedAt": item.disconnected_at.isoformat() if item.disconnected_at else None,
+            "accounts": [
+                serialize_plaid_account(account)
+                for account in sorted(item.accounts, key=lambda account: (account.created_at, account.name))
+            ],
         }
 
     def cents_from_amount(value) -> int:
@@ -209,6 +427,44 @@ def create_app() -> Flask:
             .first()
         )
 
+    def get_user_entitlement(user: User, create_if_missing: bool = False):
+        entitlement = db.session.get(UserEntitlement, user.id)
+        if not entitlement and create_if_missing:
+            entitlement = UserEntitlement(user_id=user.id)
+            db.session.add(entitlement)
+            db.session.flush()
+        return entitlement
+
+    def get_active_subscription(user: User):
+        return (
+            db.session.execute(
+                db.select(UserSubscription)
+                .filter_by(user_id=user.id)
+                .order_by(UserSubscription.created_at.desc())
+            )
+            .scalars()
+            .first()
+        )
+
+    def get_plaid_items_for_user(user: User):
+        return (
+            db.session.execute(
+                db.select(PlaidItem)
+                .filter_by(user_id=user.id)
+                .order_by(PlaidItem.created_at.asc())
+            )
+            .scalars()
+            .all()
+        )
+
+    def get_active_plaid_accounts_count(user: User) -> int:
+        return int(
+            db.session.execute(
+                db.select(func.count(PlaidAccount.id))
+                .filter_by(user_id=user.id, is_active=True)
+            ).scalar_one()
+        )
+
     def save_income_profile(user: User, payload: dict):
         existing_profile = get_current_income_profile(user)
         if existing_profile:
@@ -283,6 +539,48 @@ def create_app() -> Flask:
                 "incomeProfile": serialize_income_profile(income_profile),
                 "monthlyBudget": serialize_budget(monthly_budget),
                 "hasCompletedOnboarding": bool(income_profile and monthly_budget),
+            }
+        )
+
+    @app.get("/api/premium/status")
+    def premium_status():
+        user = get_current_user()
+        if not user:
+            return jsonify({"message": "You must be logged in to view premium status."}), 401
+
+        entitlement = get_user_entitlement(user, create_if_missing=True)
+        subscription = get_active_subscription(user)
+        db.session.commit()
+
+        return jsonify(
+            {
+                "user": serialize_user(user),
+                "entitlement": serialize_entitlement(entitlement),
+                "subscription": serialize_subscription(subscription),
+            }
+        )
+
+    @app.get("/api/plaid/status")
+    def plaid_status():
+        user = get_current_user()
+        if not user:
+            return jsonify({"message": "You must be logged in to view bank sync status."}), 401
+
+        entitlement = get_user_entitlement(user, create_if_missing=True)
+        items = get_plaid_items_for_user(user)
+        active_accounts_count = get_active_plaid_accounts_count(user)
+        db.session.commit()
+
+        return jsonify(
+            {
+                "entitlement": serialize_entitlement(entitlement),
+                "summary": {
+                    "activeConnectedAccounts": active_accounts_count,
+                    "maxLinkedAccounts": entitlement.max_linked_accounts if entitlement else 2,
+                    "canLinkMoreAccounts": active_accounts_count < (entitlement.max_linked_accounts if entitlement else 2),
+                    "premiumRequired": not (entitlement.premium_access and entitlement.bank_sync_enabled) if entitlement else True,
+                },
+                "items": [serialize_plaid_item(item) for item in items],
             }
         )
 
@@ -631,6 +929,8 @@ def create_app() -> Flask:
                 "status": "ok",
                 "databaseConfigured": bool(app.config.get("SQLALCHEMY_DATABASE_URI")),
                 "databaseReady": database_ready,
+                "plaidConfigured": bool(app.config.get("PLAID_CLIENT_ID") and app.config.get("PLAID_SECRET")),
+                "stripeConfigured": bool(app.config.get("STRIPE_SECRET_KEY")),
             }
         )
 
