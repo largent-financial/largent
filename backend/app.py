@@ -2,6 +2,11 @@ from pathlib import Path
 
 import click
 from datetime import datetime
+from email.message import EmailMessage
+import secrets
+import smtplib
+import ssl
+import string
 from uuid import UUID
 
 from flask import Flask, jsonify, request, send_from_directory, session
@@ -36,6 +41,31 @@ def create_app() -> Flask:
             raw_connection.close()
         click.echo("Database schema applied.")
 
+    @app.cli.command("sync-auth-recovery")
+    def sync_auth_recovery_command():
+        raw_connection = db.engine.raw_connection()
+        try:
+            with raw_connection.cursor() as cursor:
+                cursor.execute(
+                    """
+                    alter table users
+                    add column if not exists pw_code_hash text,
+                    add column if not exists pw_code_updated_at timestamptz
+                    """
+                )
+            raw_connection.commit()
+        finally:
+            raw_connection.close()
+
+        users_missing_codes = db.session.execute(db.select(User).filter(User.pw_code_hash.is_(None))).scalars().all()
+        for user in users_missing_codes:
+            recovery_code = generate_recovery_code()
+            user.pw_code_hash = generate_password_hash(recovery_code)
+            user.pw_code_updated_at = datetime.utcnow()
+        if users_missing_codes:
+            db.session.commit()
+        click.echo("Auth recovery columns synced.")
+
     def serialize_user(user: User):
         return {
             "id": str(user.id),
@@ -48,6 +78,48 @@ def create_app() -> Flask:
         return len(password) >= 8 and any(character.isdigit() for character in password) and any(
             not character.isalnum() for character in password
         )
+
+    def generate_recovery_code() -> str:
+        alphabet = string.ascii_uppercase + string.digits
+        return "".join(secrets.choice(alphabet) for _ in range(12))
+
+    def rotate_recovery_code(user: User) -> str:
+        recovery_code = generate_recovery_code()
+        user.pw_code_hash = generate_password_hash(recovery_code)
+        user.pw_code_updated_at = datetime.utcnow()
+        return recovery_code
+
+    def send_recovery_email(recipient_email: str, recovery_code: str) -> None:
+        if not app.config.get("MAIL_USERNAME") or not app.config.get("MAIL_PASSWORD"):
+            raise RuntimeError("Mail credentials are not configured.")
+
+        message = EmailMessage()
+        message["Subject"] = "Your Largent password recovery code"
+        message["From"] = app.config.get("MAIL_DEFAULT_SENDER") or app.config.get("MAIL_USERNAME")
+        message["To"] = recipient_email
+        message.set_content(
+            (
+                "Use this recovery code to reset your Largent password:\n\n"
+                f"{recovery_code}\n\n"
+                "Copy the code, return to the app, and paste it into the recovery form.\n"
+                "If you did not request this, you can ignore this email."
+            )
+        )
+
+        mail_server = app.config.get("MAIL_SERVER")
+        mail_port = app.config.get("MAIL_PORT")
+
+        if app.config.get("MAIL_USE_SSL"):
+            context = ssl.create_default_context()
+            with smtplib.SMTP_SSL(mail_server, mail_port, context=context) as smtp:
+                smtp.login(app.config["MAIL_USERNAME"], app.config["MAIL_PASSWORD"])
+                smtp.send_message(message)
+            return
+
+        with smtplib.SMTP(mail_server, mail_port) as smtp:
+            smtp.starttls(context=ssl.create_default_context())
+            smtp.login(app.config["MAIL_USERNAME"], app.config["MAIL_PASSWORD"])
+            smtp.send_message(message)
 
     def get_current_user():
         user_id = session.get("user_id")
@@ -86,6 +158,8 @@ def create_app() -> Flask:
             first_name=first_name,
             last_name=last_name,
             password_hash=generate_password_hash(password),
+            pw_code_hash=generate_password_hash(generate_recovery_code()),
+            pw_code_updated_at=datetime.utcnow(),
             last_login_at=datetime.utcnow(),
         )
         db.session.add(user)
@@ -132,11 +206,52 @@ def create_app() -> Flask:
 
     @app.post("/api/auth/forgot-password")
     def forgot_password():
-        return jsonify(
-            {
-                "message": "Password recovery is queued for the email automation phase. Your account data is safe in the meantime."
-            }
-        )
+        payload = request.get_json(silent=True) or {}
+        email = (payload.get("email") or "").strip().lower()
+
+        if not email:
+            return jsonify({"message": "Enter your email to request a recovery code."}), 400
+
+        user = db.session.execute(db.select(User).filter_by(email=email)).scalar_one_or_none()
+        if not user:
+            return jsonify({"message": "If that email exists, we sent a recovery code."})
+
+        recovery_code = rotate_recovery_code(user)
+        db.session.commit()
+
+        try:
+            send_recovery_email(user.email, recovery_code)
+        except Exception:
+            return jsonify({"message": "We couldn't send a recovery code right now. Please try again in a moment."}), 503
+
+        return jsonify({"message": "If that email exists, we sent a recovery code."})
+
+    @app.post("/api/auth/reset-password")
+    def reset_password():
+        payload = request.get_json(silent=True) or {}
+        email = (payload.get("email") or "").strip().lower()
+        recovery_code = (payload.get("recoveryCode") or "").strip().upper()
+        password = payload.get("password") or ""
+        confirm_password = payload.get("confirmPassword") or ""
+
+        if not email or not recovery_code or not password or not confirm_password:
+            return jsonify({"message": "Complete every field to reset your password."}), 400
+
+        if password != confirm_password:
+            return jsonify({"message": "Passwords do not match."}), 400
+
+        if not is_strong_password(password):
+            return jsonify({"message": "Password must be at least 8 characters and include 1 number and 1 special character."}), 400
+
+        user = db.session.execute(db.select(User).filter_by(email=email)).scalar_one_or_none()
+        if not user or not user.pw_code_hash or not check_password_hash(user.pw_code_hash, recovery_code):
+            return jsonify({"message": "That recovery code or email does not match our records."}), 400
+
+        user.password_hash = generate_password_hash(password)
+        rotate_recovery_code(user)
+        db.session.commit()
+
+        return jsonify({"message": "Password reset successfully. Please log in with your new password."})
 
     @app.get("/api/health")
     def healthcheck():

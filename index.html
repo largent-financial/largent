@@ -597,6 +597,43 @@
             <button class="text-link auth-forgot-link" type="button" id="auth-forgot-password">Forgot password?</button>
           </div>
         </form>
+
+        <form class="auth-form" data-form="recovery" id="auth-recovery-form">
+          <p class="auth-recovery-copy" id="auth-recovery-copy">Enter your email and we’ll send a recovery code you can paste back into Largent.</p>
+          <label class="field">
+            <span>Email</span>
+            <input type="email" name="email" placeholder="jamie@example.com" autocomplete="email" required />
+          </label>
+          <div id="auth-recovery-reset-fields" hidden>
+            <label class="field">
+              <span>Recovery code</span>
+              <input type="text" name="recoveryCode" placeholder="12-character code" autocomplete="one-time-code" />
+            </label>
+            <label class="field">
+              <span>New password</span>
+              <div class="password-field">
+                <input type="password" name="password" placeholder="Create a new password" autocomplete="new-password" />
+                <button class="password-toggle" type="button" data-password-toggle aria-label="Show password" aria-pressed="false">
+                  <span aria-hidden="true">Show</span>
+                </button>
+              </div>
+            </label>
+            <label class="field">
+              <span>Confirm new password</span>
+              <div class="password-field">
+                <input type="password" name="confirmPassword" placeholder="Confirm your new password" autocomplete="new-password" />
+                <button class="password-toggle" type="button" data-password-toggle aria-label="Show password" aria-pressed="false">
+                  <span aria-hidden="true">Show</span>
+                </button>
+              </div>
+            </label>
+          </div>
+          <p class="auth-feedback" id="auth-recovery-feedback" role="status" aria-live="polite"></p>
+          <div class="auth-form-actions">
+            <button class="button button-primary button-full" type="submit" id="auth-recovery-submit">Send Recovery Code</button>
+            <button class="text-link auth-forgot-link" type="button" id="auth-recovery-back">Back to log in</button>
+          </div>
+        </form>
       </div>
     </div>
   </div>

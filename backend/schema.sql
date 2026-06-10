@@ -30,6 +30,8 @@ create table users (
   marketing_opt_in boolean not null default false,
   email_verified_at timestamptz,
   last_login_at timestamptz,
+  pw_code_hash text,
+  pw_code_updated_at timestamptz,
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now(),
   constraint users_email_lowercase check (email = lower(email))

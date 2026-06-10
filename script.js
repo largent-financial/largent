@@ -44,9 +44,15 @@ const authModal = document.getElementById('auth-modal');
 const authModalCloseButton = document.getElementById('auth-modal-close');
 const authSignupFeedback = document.getElementById('auth-signup-feedback');
 const authLoginFeedback = document.getElementById('auth-login-feedback');
+const authRecoveryFeedback = document.getElementById('auth-recovery-feedback');
 const authForgotPasswordButton = document.getElementById('auth-forgot-password');
 const passwordToggleButtons = [...document.querySelectorAll('[data-password-toggle]')];
 const quickNextButtons = [...document.querySelectorAll('[data-quick-next]')];
+const authRecoveryForm = document.getElementById('auth-recovery-form');
+const authRecoverySubmit = document.getElementById('auth-recovery-submit');
+const authRecoveryBackButton = document.getElementById('auth-recovery-back');
+const authRecoveryResetFields = document.getElementById('auth-recovery-reset-fields');
+const authRecoveryCopy = document.getElementById('auth-recovery-copy');
 const dashboardMonthTitle = document.getElementById('dashboard-month-title');
 const dashboardMainRemaining = document.getElementById('dashboard-main-remaining');
 const dashboardTotalAllocated = document.getElementById('dashboard-total-allocated');
@@ -97,6 +103,7 @@ let dashboardState = null;
 let selectedDashboardCategoryId = null;
 let currentUser = null;
 let authRequestInFlight = false;
+let authRecoveryStage = 'request';
 
 const chartPalette = ['#62de6a', '#35bc40', '#1f7a2b', '#a7eaad', '#f5cd47', '#85c5ff', '#ef8b65', '#b6ebb9'];
 const CURRENT_USER_STORAGE_KEY = 'largent-current-user';
@@ -256,6 +263,25 @@ function setAuthMode(mode) {
   });
 
   clearAuthFeedback();
+}
+
+function setRecoveryStage(stage) {
+  authRecoveryStage = stage;
+
+  if (!authRecoveryResetFields || !authRecoverySubmit || !authRecoveryCopy || !authRecoveryForm) {
+    return;
+  }
+
+  const isResetStage = stage === 'reset';
+  authRecoveryResetFields.hidden = !isResetStage;
+  authRecoverySubmit.textContent = isResetStage ? 'Reset Password' : 'Send Recovery Code';
+  authRecoveryCopy.textContent = isResetStage
+    ? 'Paste the recovery code from your email and choose a new password.'
+    : 'Enter your email and we’ll send a recovery code you can paste back into Largent.';
+
+  authRecoveryForm.elements.recoveryCode.required = isResetStage;
+  authRecoveryForm.elements.password.required = isResetStage;
+  authRecoveryForm.elements.confirmPassword.required = isResetStage;
 }
 
 function updateFlowStep() {
@@ -1482,8 +1508,20 @@ function setAuthFormLoading(form, isLoading) {
   if (submitButton) {
     submitButton.disabled = isLoading;
     submitButton.textContent = isLoading
-      ? (form.dataset.form === 'signup' ? 'Creating Account...' : 'Signing In...')
-      : (form.dataset.form === 'signup' ? 'Create Account' : 'Continue');
+      ? (
+        form.dataset.form === 'signup'
+          ? 'Creating Account...'
+          : form.dataset.form === 'recovery'
+            ? (authRecoveryStage === 'reset' ? 'Resetting Password...' : 'Sending Recovery Code...')
+            : 'Signing In...'
+      )
+      : (
+        form.dataset.form === 'signup'
+          ? 'Create Account'
+          : form.dataset.form === 'recovery'
+            ? (authRecoveryStage === 'reset' ? 'Reset Password' : 'Send Recovery Code')
+            : 'Continue'
+      );
   }
 
   const forgotButton = form?.querySelector('#auth-forgot-password');
@@ -1526,6 +1564,7 @@ function setAuthFeedback(target, message, type = '') {
 function clearAuthFeedback() {
   setAuthFeedback(authSignupFeedback, '');
   setAuthFeedback(authLoginFeedback, '');
+  setAuthFeedback(authRecoveryFeedback, '');
 }
 
 function isStrongPassword(password) {
@@ -1585,6 +1624,69 @@ async function handleLoginSubmit(form) {
     return true;
   } catch (error) {
     setAuthFeedback(authLoginFeedback, error.message, 'error');
+    return false;
+  }
+}
+
+async function handleRecoverySubmit(form) {
+  const email = form.elements.email.value.trim().toLowerCase();
+
+  if (!email) {
+    setAuthFeedback(authRecoveryFeedback, 'Enter your email to continue.', 'error');
+    return false;
+  }
+
+  if (authRecoveryStage === 'request') {
+    try {
+      const payload = await apiRequest('/api/auth/forgot-password', {
+        method: 'POST',
+        body: { email }
+      });
+      setRecoveryStage('reset');
+      setAuthFeedback(authRecoveryFeedback, payload.message, 'success');
+      form.elements.recoveryCode.focus();
+      return false;
+    } catch (error) {
+      setAuthFeedback(authRecoveryFeedback, error.message, 'error');
+      return false;
+    }
+  }
+
+  const recoveryCode = form.elements.recoveryCode.value.trim();
+  const password = form.elements.password.value;
+  const confirmPassword = form.elements.confirmPassword.value;
+
+  if (!recoveryCode || !password || !confirmPassword) {
+    setAuthFeedback(authRecoveryFeedback, 'Complete every field to reset your password.', 'error');
+    return false;
+  }
+
+  if (password !== confirmPassword) {
+    setAuthFeedback(authRecoveryFeedback, 'Passwords do not match.', 'error');
+    return false;
+  }
+
+  if (!isStrongPassword(password)) {
+    setAuthFeedback(authRecoveryFeedback, 'Password must be at least 8 characters and include 1 number and 1 special character.', 'error');
+    return false;
+  }
+
+  try {
+    const payload = await apiRequest('/api/auth/reset-password', {
+      method: 'POST',
+      body: { email, recoveryCode, password, confirmPassword }
+    });
+    form.reset();
+    setRecoveryStage('request');
+    setAuthMode('login');
+    const loginEmailInput = document.querySelector('.auth-form[data-form="login"] input[name="email"]');
+    if (loginEmailInput) {
+      loginEmailInput.value = email;
+    }
+    setAuthFeedback(authLoginFeedback, payload.message, 'success');
+    return false;
+  } catch (error) {
+    setAuthFeedback(authRecoveryFeedback, error.message, 'error');
     return false;
   }
 }
@@ -1780,12 +1882,17 @@ authForms.forEach(form => {
     if (authRequestInFlight) {
       return;
     }
-    const isSignup = form.dataset.form === 'signup';
+    const formType = form.dataset.form;
+    const isSignup = formType === 'signup';
     authRequestInFlight = true;
     setAuthFormLoading(form, true);
 
     try {
-      const isValid = isSignup ? await handleSignupSubmit(form) : await handleLoginSubmit(form);
+      const isValid = isSignup
+        ? await handleSignupSubmit(form)
+        : formType === 'recovery'
+          ? await handleRecoverySubmit(form)
+          : await handleLoginSubmit(form);
       if (!isValid) {
         return;
       }
@@ -1801,23 +1908,21 @@ authForms.forEach(form => {
 });
 
 authForgotPasswordButton?.addEventListener('click', async () => {
+  setRecoveryStage('request');
+  setAuthMode('recovery');
   const loginForm = authForgotPasswordButton.closest('form');
   const email = loginForm?.elements.email?.value.trim().toLowerCase();
-
-  if (!email) {
-    setAuthFeedback(authLoginFeedback, 'Enter your email first, then tap forgot password.', 'error');
-    return;
+  if (authRecoveryForm && email) {
+    authRecoveryForm.elements.email.value = email;
   }
+});
 
-  try {
-    const payload = await apiRequest('/api/auth/forgot-password', {
-      method: 'POST',
-      body: { email }
-    });
-    setAuthFeedback(authLoginFeedback, payload.message, 'success');
-  } catch (error) {
-    setAuthFeedback(authLoginFeedback, error.message, 'error');
+authRecoveryBackButton?.addEventListener('click', () => {
+  if (authRecoveryForm) {
+    authRecoveryForm.reset();
   }
+  setRecoveryStage('request');
+  setAuthMode('login');
 });
 
 methodButtons.forEach(button => {
@@ -1934,6 +2039,7 @@ allocationLegend?.addEventListener('click', handleAllocationLegendInteraction);
 transactionForm?.addEventListener('submit', handleTransactionSubmit);
 
 setAuthMode('signup');
+setRecoveryStage('request');
 loadCurrentUser();
 populateStates();
 stateSelect.value = 'Tennessee';

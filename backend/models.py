@@ -74,6 +74,8 @@ class User(TimestampMixin, db.Model):
     marketing_opt_in: Mapped[bool] = mapped_column(default=False, nullable=False)
     email_verified_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     last_login_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    pw_code_hash: Mapped[str | None] = mapped_column(String(255))
+    pw_code_updated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
     auth_tokens: Mapped[list["AuthToken"]] = relationship(back_populates="user", cascade="all, delete-orphan")
     income_profiles: Mapped[list["IncomeProfile"]] = relationship(back_populates="user", cascade="all, delete-orphan")
@@ -279,4 +281,3 @@ class EmailEvent(TimestampMixin, db.Model):
 
     user: Mapped["User"] = relationship(back_populates="email_events")
     monthly_budget: Mapped["MonthlyBudget"] = relationship(back_populates="email_events")
-
