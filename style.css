@@ -930,12 +930,6 @@ h3 {
   color: var(--primary-deep);
 }
 
-.profile-nav-item-premium {
-  background: linear-gradient(180deg, #121514, #181d1a);
-  color: #fff;
-  border-color: rgba(98, 222, 106, 0.18);
-}
-
 .profile-panel-wrap {
   min-width: 0;
   min-height: 0;

@@ -13,7 +13,6 @@ const profileAccountForm = document.getElementById('profile-account-form');
 const profileAccountFeedback = document.getElementById('profile-account-feedback');
 const profileAccountSaveButton = document.getElementById('profile-account-save-button');
 const profileResetPasswordButton = document.getElementById('profile-reset-password-button');
-const profileSettingsFeedback = document.getElementById('profile-settings-feedback');
 const profileBillingSummary = document.getElementById('profile-billing-summary');
 const profileBillingFeedback = document.getElementById('profile-billing-feedback');
 const profileUpgradeButton = document.getElementById('profile-upgrade-button');
@@ -23,6 +22,10 @@ const profileBankList = document.getElementById('profile-bank-list');
 const profileBankingFeedback = document.getElementById('profile-banking-feedback');
 const profileOpenDashboardButton = document.getElementById('profile-open-dashboard-button');
 const profileConnectBankButton = document.getElementById('profile-connect-bank-button');
+const profileAccountConfirmModal = document.getElementById('profile-account-confirm-modal');
+const profileAccountConfirmFeedback = document.getElementById('profile-account-confirm-feedback');
+const profileAccountConfirmCancelButton = document.getElementById('profile-account-confirm-cancel');
+const profileAccountConfirmSaveButton = document.getElementById('profile-account-confirm-save');
 const flowSteps = [...document.querySelectorAll('.flow-step')];
 const stepIndicators = [...document.querySelectorAll('.step-item')];
 const methodButtons = [...document.querySelectorAll('[data-method]')];
@@ -176,7 +179,8 @@ let profileView = 'account';
 let profileState = {
   loading: false,
   savingAccount: false,
-  premium: null
+  premium: null,
+  pendingAccountPayload: null
 };
 let addSpendingExpanded = false;
 let persistedAppState = {
@@ -186,14 +190,6 @@ let persistedAppState = {
 };
 
 const CURRENT_USER_STORAGE_KEY = 'largent-current-user';
-const USER_SETTINGS_STORAGE_KEY = 'largent-user-settings';
-const defaultUserSettings = {
-  monthlySummaryEmail: true,
-  securityEmails: true,
-  reduceMotion: false,
-  openDashboardFirst: true
-};
-let userSettings = { ...defaultUserSettings };
 
 const defaultAllocationSections = [
   {
@@ -2259,25 +2255,6 @@ function closeModal(modal) {
   }, 220);
 }
 
-function loadUserSettings() {
-  try {
-    const raw = window.localStorage.getItem(USER_SETTINGS_STORAGE_KEY);
-    userSettings = raw ? { ...defaultUserSettings, ...JSON.parse(raw) } : { ...defaultUserSettings };
-  } catch {
-    userSettings = { ...defaultUserSettings };
-  }
-  applyUserSettings();
-}
-
-function saveUserSettings() {
-  window.localStorage.setItem(USER_SETTINGS_STORAGE_KEY, JSON.stringify(userSettings));
-  applyUserSettings();
-}
-
-function applyUserSettings() {
-  document.documentElement.dataset.reduceMotion = userSettings.reduceMotion ? 'true' : 'false';
-}
-
 function closeHeaderMenu() {
   if (!headerAccountMenu || !headerAuthButton) {
     return;
@@ -2341,12 +2318,8 @@ function renderProfileAccountPanel() {
   profileAccountForm.elements.firstName.value = currentUser.firstName || '';
   profileAccountForm.elements.lastName.value = currentUser.lastName || '';
   profileAccountForm.elements.email.value = currentUser.email || '';
-}
-
-function renderProfileSettingsPanel() {
-  document.querySelectorAll('[data-setting-toggle]').forEach(input => {
-    input.checked = Boolean(userSettings[input.dataset.settingToggle]);
-  });
+  profileAccountForm.elements.monthlySummaryEmailsEnabled.checked = Boolean(currentUser.monthlySummaryEmailsEnabled);
+  profileAccountForm.elements.securityEmailsEnabled.checked = Boolean(currentUser.securityEmailsEnabled);
 }
 
 function renderProfileBillingPanel() {
@@ -2447,10 +2420,8 @@ async function openProfileModal(nextView = 'account') {
   profileState.loading = true;
   setProfileFeedback(profileBillingFeedback, '');
   setProfileFeedback(profileAccountFeedback, '');
-  setProfileFeedback(profileSettingsFeedback, '');
   setProfileFeedback(profileBankingFeedback, '');
   renderProfileAccountPanel();
-  renderProfileSettingsPanel();
   renderProfileBankingPanel();
   openModal(profileModal);
   setProfileView(nextView);
@@ -2627,7 +2598,7 @@ function routeAuthenticatedUser(appState) {
     updateFlowStep();
     renderAllocationScreen();
     renderDashboard();
-    showScreen(userSettings.openDashboardFirst ? 'dashboard' : 'allocation');
+    showScreen('dashboard');
     return;
   }
 
@@ -2835,9 +2806,27 @@ async function handleAccountProfileSave(event) {
   const firstName = profileAccountForm.elements.firstName.value.trim();
   const lastName = profileAccountForm.elements.lastName.value.trim();
   const email = profileAccountForm.elements.email.value.trim().toLowerCase();
+  const monthlySummaryEmailsEnabled = profileAccountForm.elements.monthlySummaryEmailsEnabled.checked;
+  const securityEmailsEnabled = profileAccountForm.elements.securityEmailsEnabled.checked;
 
   if (!firstName || !lastName || !email) {
     setProfileFeedback(profileAccountFeedback, 'Please complete your first name, last name, and email.', 'error');
+    return;
+  }
+
+  profileState.pendingAccountPayload = {
+    firstName,
+    lastName,
+    email,
+    monthlySummaryEmailsEnabled,
+    securityEmailsEnabled
+  };
+  setProfileFeedback(profileAccountConfirmFeedback, '');
+  openModal(profileAccountConfirmModal);
+}
+
+async function confirmAccountProfileSave() {
+  if (!profileState.pendingAccountPayload || profileState.savingAccount) {
     return;
   }
 
@@ -2846,22 +2835,38 @@ async function handleAccountProfileSave(event) {
     profileAccountSaveButton.disabled = true;
     profileAccountSaveButton.textContent = 'Saving...';
   }
+  if (profileAccountConfirmSaveButton) {
+    profileAccountConfirmSaveButton.disabled = true;
+    profileAccountConfirmSaveButton.textContent = 'Saving...';
+  }
+  if (profileAccountConfirmCancelButton) {
+    profileAccountConfirmCancelButton.disabled = true;
+  }
 
   try {
     const payload = await apiRequest('/api/account/profile', {
       method: 'POST',
-      body: { firstName, lastName, email }
+      body: profileState.pendingAccountPayload
     });
     saveCurrentUser(payload.user);
     setProfileFeedback(profileAccountFeedback, payload.message || 'Account updated successfully.', 'success');
+    closeModal(profileAccountConfirmModal);
+    profileState.pendingAccountPayload = null;
     updateHeaderAuthState();
   } catch (error) {
-    setProfileFeedback(profileAccountFeedback, error.message || 'We could not update your account.', 'error');
+    setProfileFeedback(profileAccountConfirmFeedback, error.message || 'We could not update your account.', 'error');
   } finally {
     profileState.savingAccount = false;
     if (profileAccountSaveButton) {
       profileAccountSaveButton.disabled = false;
-      profileAccountSaveButton.textContent = 'Save account';
+      profileAccountSaveButton.textContent = 'Save changes';
+    }
+    if (profileAccountConfirmSaveButton) {
+      profileAccountConfirmSaveButton.disabled = false;
+      profileAccountConfirmSaveButton.textContent = 'Confirm & Save';
+    }
+    if (profileAccountConfirmCancelButton) {
+      profileAccountConfirmCancelButton.disabled = false;
     }
   }
 }
@@ -3230,14 +3235,6 @@ document.querySelectorAll('[data-open-profile-view]').forEach(button => {
   button.addEventListener('click', () => openProfileModal(button.dataset.openProfileView));
 });
 
-document.querySelectorAll('[data-setting-toggle]').forEach(input => {
-  input.addEventListener('change', () => {
-    userSettings[input.dataset.settingToggle] = input.checked;
-    saveUserSettings();
-    setProfileFeedback(profileSettingsFeedback, 'Settings updated.', 'success');
-  });
-});
-
 authToggles.forEach(toggle => {
   toggle.addEventListener('click', () => setAuthMode(toggle.dataset.authMode));
 });
@@ -3452,6 +3449,18 @@ profileModal?.addEventListener('click', event => {
   }
 });
 profileAccountForm?.addEventListener('submit', handleAccountProfileSave);
+profileAccountConfirmCancelButton?.addEventListener('click', () => {
+  profileState.pendingAccountPayload = null;
+  closeModal(profileAccountConfirmModal);
+});
+profileAccountConfirmSaveButton?.addEventListener('click', confirmAccountProfileSave);
+profileAccountConfirmModal?.addEventListener('click', event => {
+  const closeTarget = event.target.closest('[data-close-modal]');
+  if (closeTarget && !profileState.savingAccount) {
+    profileState.pendingAccountPayload = null;
+    closeModal(profileAccountConfirmModal);
+  }
+});
 profileResetPasswordButton?.addEventListener('click', handleResetPasswordFromProfile);
 headerSignoutButton?.addEventListener('click', handleSignOut);
 profileUpgradeButton?.addEventListener('click', () => {
@@ -3549,7 +3558,6 @@ document.addEventListener('keydown', event => {
   }
 });
 
-loadUserSettings();
 setAuthMode('signup');
 setRecoveryStage('request');
 loadCurrentUser();
