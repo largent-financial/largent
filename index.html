@@ -529,11 +529,21 @@
           </label>
           <label class="field">
             <span>Password</span>
-            <input type="password" name="password" placeholder="Create a password" autocomplete="new-password" required />
+            <div class="password-field">
+              <input type="password" name="password" placeholder="Create a password" autocomplete="new-password" required />
+              <button class="password-toggle" type="button" data-password-toggle aria-label="Show password" aria-pressed="false">
+                <span aria-hidden="true">👁</span>
+              </button>
+            </div>
           </label>
           <label class="field">
             <span>Confirm password</span>
-            <input type="password" name="confirmPassword" placeholder="Confirm your password" autocomplete="new-password" required />
+            <div class="password-field">
+              <input type="password" name="confirmPassword" placeholder="Confirm your password" autocomplete="new-password" required />
+              <button class="password-toggle" type="button" data-password-toggle aria-label="Show password" aria-pressed="false">
+                <span aria-hidden="true">👁</span>
+              </button>
+            </div>
           </label>
           <p class="auth-feedback" id="auth-signup-feedback" role="status" aria-live="polite"></p>
           <button class="button button-primary button-full" type="submit">Create Account</button>
@@ -546,7 +556,12 @@
           </label>
           <label class="field">
             <span>Password</span>
-            <input type="password" name="password" placeholder="Enter your password" autocomplete="current-password" required />
+            <div class="password-field">
+              <input type="password" name="password" placeholder="Enter your password" autocomplete="current-password" required />
+              <button class="password-toggle" type="button" data-password-toggle aria-label="Show password" aria-pressed="false">
+                <span aria-hidden="true">👁</span>
+              </button>
+            </div>
           </label>
           <p class="auth-feedback" id="auth-login-feedback" role="status" aria-live="polite"></p>
           <div class="auth-form-actions">

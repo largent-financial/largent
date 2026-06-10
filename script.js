@@ -37,6 +37,7 @@ const authModalCloseButton = document.getElementById('auth-modal-close');
 const authSignupFeedback = document.getElementById('auth-signup-feedback');
 const authLoginFeedback = document.getElementById('auth-login-feedback');
 const authForgotPasswordButton = document.getElementById('auth-forgot-password');
+const passwordToggleButtons = [...document.querySelectorAll('[data-password-toggle]')];
 const dashboardMonthTitle = document.getElementById('dashboard-month-title');
 const dashboardMainRemaining = document.getElementById('dashboard-main-remaining');
 const dashboardTotalAllocated = document.getElementById('dashboard-total-allocated');
@@ -1481,6 +1482,10 @@ function clearAuthFeedback() {
   setAuthFeedback(authLoginFeedback, '');
 }
 
+function isStrongPassword(password) {
+  return password.length >= 8 && /[0-9]/.test(password) && /[^A-Za-z0-9]/.test(password);
+}
+
 async function handleSignupSubmit(form) {
   const firstName = form.elements.firstName.value.trim();
   const lastName = form.elements.lastName.value.trim();
@@ -1495,6 +1500,11 @@ async function handleSignupSubmit(form) {
 
   if (password !== confirmPassword) {
     setAuthFeedback(authSignupFeedback, 'Passwords do not match.', 'error');
+    return false;
+  }
+
+  if (!isStrongPassword(password)) {
+    setAuthFeedback(authSignupFeedback, 'Password must be at least 8 characters and include 1 number and 1 special character.', 'error');
     return false;
   }
 
@@ -1622,6 +1632,22 @@ openAuthButtons.forEach(button => {
 
 authToggles.forEach(toggle => {
   toggle.addEventListener('click', () => setAuthMode(toggle.dataset.authMode));
+});
+
+passwordToggleButtons.forEach(button => {
+  button.addEventListener('click', () => {
+    const fieldWrap = button.closest('.password-field');
+    const input = fieldWrap?.querySelector('input');
+    if (!input) {
+      return;
+    }
+
+    const isShowing = input.type === 'text';
+    input.type = isShowing ? 'password' : 'text';
+    button.setAttribute('aria-pressed', String(!isShowing));
+    button.setAttribute('aria-label', isShowing ? 'Show password' : 'Hide password');
+    button.innerHTML = `<span aria-hidden="true">${isShowing ? '👁' : '🙈'}</span>`;
+  });
 });
 
 authForms.forEach(form => {

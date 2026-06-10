@@ -44,6 +44,11 @@ def create_app() -> Flask:
             "lastName": user.last_name,
         }
 
+    def is_strong_password(password: str) -> bool:
+        return len(password) >= 8 and any(character.isdigit() for character in password) and any(
+            not character.isalnum() for character in password
+        )
+
     def get_current_user():
         user_id = session.get("user_id")
         if not user_id:
@@ -69,8 +74,8 @@ def create_app() -> Flask:
         if password != confirm_password:
             return jsonify({"message": "Passwords do not match."}), 400
 
-        if len(password) < 8:
-            return jsonify({"message": "Password must be at least 8 characters."}), 400
+        if not is_strong_password(password):
+            return jsonify({"message": "Password must be at least 8 characters and include 1 number and 1 special character."}), 400
 
         existing_user = db.session.execute(db.select(User).filter_by(email=email)).scalar_one_or_none()
         if existing_user:

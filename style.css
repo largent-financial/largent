@@ -138,6 +138,39 @@ a {
   color: var(--text);
 }
 
+.password-field {
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+
+.password-field input {
+  padding-right: 52px;
+}
+
+.password-toggle {
+  position: absolute;
+  right: 8px;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 40px;
+  height: 40px;
+  border: 0;
+  border-radius: 999px;
+  background: transparent;
+  color: var(--muted);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  transition: background-color 180ms var(--ease), color 180ms var(--ease), transform 180ms var(--ease);
+}
+
+.password-toggle:hover,
+.password-toggle:focus-visible {
+  background: rgba(98, 222, 106, 0.12);
+  color: var(--primary-deep);
+}
+
 .app-shell {
   padding: 20px;
 }
