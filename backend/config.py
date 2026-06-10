@@ -5,7 +5,9 @@ def _normalize_database_url(raw_url: str | None) -> str | None:
     if not raw_url:
         return None
     if raw_url.startswith("postgres://"):
-        return raw_url.replace("postgres://", "postgresql://", 1)
+        raw_url = raw_url.replace("postgres://", "postgresql://", 1)
+    if raw_url.startswith("postgresql://") and "+psycopg" not in raw_url:
+        return raw_url.replace("postgresql://", "postgresql+psycopg://", 1)
     return raw_url
 
 
@@ -25,4 +27,3 @@ class Config:
     REMEMBER_COOKIE_HTTPONLY = True
     SESSION_COOKIE_SAMESITE = "Lax"
     REMEMBER_COOKIE_SAMESITE = "Lax"
-
