@@ -104,6 +104,11 @@ let selectedDashboardCategoryId = null;
 let currentUser = null;
 let authRequestInFlight = false;
 let authRecoveryStage = 'request';
+let persistedAppState = {
+  incomeProfile: null,
+  monthlyBudget: null,
+  hasCompletedOnboarding: false
+};
 
 const chartPalette = ['#62de6a', '#35bc40', '#1f7a2b', '#a7eaad', '#f5cd47', '#85c5ff', '#ef8b65', '#b6ebb9'];
 const CURRENT_USER_STORAGE_KEY = 'largent-current-user';
@@ -241,6 +246,20 @@ const additionalMedicareThresholds = {
 };
 
 const deductionKinds = ['401k', 'roth', 'hsa'];
+const filingStatusToApi = {
+  Single: 'single',
+  'Married Filing Jointly': 'married_filing_jointly',
+  'Married Filing Separately': 'married_filing_separately',
+  'Head of Household': 'head_of_household'
+};
+const filingStatusFromApi = Object.fromEntries(Object.entries(filingStatusToApi).map(([label, value]) => [value, label]));
+const payFrequencyToApi = {
+  Weekly: 'weekly',
+  Biweekly: 'biweekly',
+  'Semi-monthly': 'semi_monthly',
+  Monthly: 'monthly'
+};
+const payFrequencyFromApi = Object.fromEntries(Object.entries(payFrequencyToApi).map(([label, value]) => [value, label]));
 
 function showScreen(screenName) {
   screens.forEach(screen => {
@@ -313,7 +332,7 @@ function updateFlowStep() {
 
   stepNumber.textContent = String(currentStep);
   backStepButton.disabled = currentStep === 1;
-  nextStepButton.textContent = currentStep === 4 ? 'Go To Ledger' : 'Next';
+  nextStepButton.textContent = currentStep === 4 ? 'Save & Go to Ledger' : 'Next';
 
   if (currentStep === 4) {
     updateSummary();
@@ -929,6 +948,30 @@ function initializeAllocationScreen() {
   renderAllocationScreen();
 }
 
+function hydrateAllocationFromBudget(budget) {
+  if (!budget) {
+    allocationState = null;
+    return;
+  }
+
+  allocationState = {
+    monthLabel: budget.monthLabel || getCurrentMonthLabel(),
+    monthlyIncome: roundToCents(budget.monthlyIncome || 0),
+    sections: (budget.sections || []).map(section => ({
+      id: section.id || section.sectionKey || `section-${Math.random().toString(36).slice(2, 8)}`,
+      title: section.title,
+      categories: (section.categories || [])
+        .filter(category => !category.isArchived)
+        .map(category => ({
+          id: category.id,
+          title: category.title,
+          amount: roundToCents(category.amount || 0),
+          isEditing: false
+        }))
+    }))
+  };
+}
+
 function addCategoryToSection(sectionId) {
   const section = allocationState?.sections.find(item => item.id === sectionId);
   if (!section) {
@@ -1376,6 +1419,46 @@ function renderDashboard() {
   renderTransactionHistory();
 }
 
+function hydrateDashboardFromBudget(budget) {
+  if (!budget) {
+    dashboardState = null;
+    return;
+  }
+
+  dashboardState = {
+    monthLabel: budget.monthLabel || getCurrentMonthLabel(),
+    monthlyIncome: roundToCents(budget.monthlyIncome || 0),
+    sections: (budget.sections || []).map(section => ({
+      id: section.id || section.sectionKey || `section-${Math.random().toString(36).slice(2, 8)}`,
+      title: section.title,
+      categories: (section.categories || [])
+        .filter(category => !category.isArchived)
+        .map(category => ({
+          id: category.id,
+          title: category.title,
+          allocated: roundToCents(category.amount || 0),
+          spent: 0
+        }))
+    })),
+    transactions: (budget.transactions || []).map(transaction => ({
+      id: transaction.id,
+      amount: roundToCents(transaction.amount || 0),
+      date: transaction.date,
+      categoryId: transaction.categoryId,
+      categoryTitle: transaction.categoryTitle,
+      sectionTitle: transaction.sectionTitle,
+      memo: transaction.memo || ''
+    }))
+  };
+
+  dashboardState.transactions.forEach(transaction => {
+    const match = findDashboardCategory(transaction.categoryId);
+    if (match) {
+      match.category.spent = roundToCents(match.category.spent + transaction.amount);
+    }
+  });
+}
+
 function handleAllocationLegendInteraction(event) {
   const button = event.target.closest('[data-highlight-category-id]');
   if (!button) {
@@ -1457,6 +1540,240 @@ function saveCurrentUser(user) {
   updateHeaderAuthState();
 }
 
+function syncPersistedState({ incomeProfile = null, monthlyBudget = null, hasCompletedOnboarding = false } = {}) {
+  persistedAppState = {
+    incomeProfile,
+    monthlyBudget,
+    hasCompletedOnboarding
+  };
+}
+
+function hydrateOnboardingFromProfile(profile) {
+  if (!profile) {
+    return;
+  }
+
+  currentMethod = profile.method === 'manual' ? 'manual' : 'salary';
+  const incomeValue = currentMethod === 'manual'
+    ? roundToCents(profile.manualMonthlyIncome || 0)
+    : roundToCents(profile.annualSalary || 0);
+
+  annualSalaryInput.value = incomeValue ? String(incomeValue) : '';
+  stateSelect.value = profile.state || 'Tennessee';
+  filingStatusSelect.value = filingStatusFromApi[profile.filingStatus] || 'Single';
+  payFrequencySelect.value = payFrequencyFromApi[profile.payFrequency] || 'Biweekly';
+  extraWithholdingInput.value = profile.extraWithholding ? String(roundToCents(profile.extraWithholding)) : '';
+  setDeductionTaxTreatment('extra-withholding', profile.extraWithholdingTaxTreatment === 'pretax' ? 'pretax' : 'posttax');
+
+  deductionKinds.forEach(deductionKey => {
+    const match = (profile.deductions || []).find(deduction => deduction.key === deductionKey);
+    const mode = match?.inputMode === 'percent' ? 'percent' : 'yearly';
+    setDeductionMode(deductionKey, mode);
+
+    const yearlyInput = getDeductionInput(deductionKey, 'yearly');
+    const percentInput = getDeductionInput(deductionKey, 'percent');
+    if (yearlyInput) {
+      yearlyInput.value = match?.yearlyAmount ? String(roundToCents(match.yearlyAmount)) : '';
+    }
+    if (percentInput) {
+      percentInput.value = match?.percent ? String(roundToCents(match.percent)) : '';
+    }
+    setDeductionTaxTreatment(deductionKey, match?.taxTreatment === 'pretax' ? 'pretax' : 'posttax');
+    updateDeductionReflection(deductionKey);
+  });
+
+  methodButtons.forEach(button => {
+    const isActive = button.dataset.method === currentMethod;
+    button.classList.toggle('option-card-active', isActive);
+    button.setAttribute('aria-checked', String(isActive));
+  });
+
+  updateMethodUI();
+  updateSummary();
+}
+
+function buildOnboardingPayload() {
+  const results = calculateResults();
+
+  return {
+    method: currentMethod,
+    annualSalary: currentMethod === 'salary' ? roundToCents(getSalaryValue()) : null,
+    manualMonthlyIncome: currentMethod === 'manual' ? roundToCents(getManualMonthlyTakeHomeValue()) : null,
+    stateCode: stateSelect.value,
+    filingStatus: currentMethod === 'salary' ? filingStatusToApi[filingStatusSelect.value] : null,
+    payFrequency: currentMethod === 'salary' ? payFrequencyToApi[payFrequencySelect.value] : null,
+    extraWithholding: roundToCents(parseMoney(extraWithholdingInput.value)),
+    extraWithholdingTaxTreatment: getDeductionTaxTreatment('extra-withholding'),
+    results,
+    deductions: deductionKinds.map(deduction => ({
+      key: deduction,
+      title: deductionLabel(deduction),
+      inputMode: getActiveDeductionMode(deduction),
+      yearlyAmount: roundToCents(parseMoney(getDeductionInput(deduction, 'yearly')?.value)),
+      percent: roundToCents(parsePercent(getDeductionInput(deduction, 'percent')?.value)),
+      taxTreatment: getDeductionTaxTreatment(deduction),
+      enabled: Boolean(parseMoney(getDeductionInput(deduction, 'yearly')?.value) || parsePercent(getDeductionInput(deduction, 'percent')?.value))
+    }))
+  };
+}
+
+function buildLedgerPayload() {
+  if (!allocationState) {
+    return null;
+  }
+
+  const validCategoryIds = new Set(
+    allocationState.sections.flatMap(section => section.categories.map(category => category.id))
+  );
+  const transactions = (dashboardState?.transactions || []).filter(transaction => validCategoryIds.has(transaction.categoryId));
+
+  return {
+    monthLabel: allocationState.monthLabel,
+    monthlyIncome: roundToCents(allocationState.monthlyIncome),
+    allocatedTotal: getAllocatedTotal(),
+    remainingToAllocate: getAllocationRemaining(),
+    sections: allocationState.sections.map(section => ({
+      id: section.id,
+      sectionKey: section.id,
+      title: section.title,
+      categories: section.categories
+        .filter(category => category.title.trim())
+        .map(category => ({
+        id: category.id,
+        title: category.title,
+        amount: roundToCents(category.amount)
+      }))
+    })),
+    transactions: transactions.map(transaction => ({
+      id: transaction.id,
+      amount: roundToCents(transaction.amount),
+      date: transaction.date,
+      categoryId: transaction.categoryId,
+      memo: transaction.memo || ''
+    }))
+  };
+}
+
+async function loadAppState() {
+  const payload = await apiRequest('/api/app-state');
+  saveCurrentUser(payload.user || null);
+  syncPersistedState(payload);
+
+  if (payload.incomeProfile) {
+    hydrateOnboardingFromProfile(payload.incomeProfile);
+  }
+  if (payload.monthlyBudget) {
+    hydrateAllocationFromBudget(payload.monthlyBudget);
+    hydrateDashboardFromBudget(payload.monthlyBudget);
+  }
+
+  return payload;
+}
+
+function routeAuthenticatedUser(appState) {
+  if (appState?.monthlyBudget) {
+    currentStep = 4;
+    previousStep = 4;
+    updateFlowStep();
+    renderAllocationScreen();
+    renderDashboard();
+    showScreen('dashboard');
+    return;
+  }
+
+  currentStep = 1;
+  previousStep = 1;
+  updateFlowStep();
+  showScreen('step-a');
+}
+
+async function ensureAuthenticatedForSave() {
+  if (currentUser) {
+    return true;
+  }
+
+  setAuthMode('signup');
+  openModal(authModal);
+  setAuthFeedback(authSignupFeedback, 'Create an account or log in to save your progress.', 'error');
+  return false;
+}
+
+async function saveOnboardingAndOpenLedger() {
+  if (!(await ensureAuthenticatedForSave())) {
+    return;
+  }
+
+  nextStepButton.disabled = true;
+  nextStepButton.textContent = 'Saving...';
+
+  try {
+    const payload = await apiRequest('/api/onboarding/save', {
+      method: 'POST',
+      body: buildOnboardingPayload()
+    });
+
+    if (payload.incomeProfile) {
+      syncPersistedState({
+        incomeProfile: payload.incomeProfile,
+        monthlyBudget: persistedAppState.monthlyBudget,
+        hasCompletedOnboarding: Boolean(payload.incomeProfile && persistedAppState.monthlyBudget)
+      });
+      hydrateOnboardingFromProfile(payload.incomeProfile);
+    }
+
+    initializeAllocationScreen();
+    showScreen('allocation');
+  } catch (error) {
+    setAuthFeedback(authLoginFeedback, error.message, 'error');
+    if (error.status === 401) {
+      openModal(authModal);
+    }
+  } finally {
+    nextStepButton.disabled = false;
+    updateFlowStep();
+  }
+}
+
+async function saveLedgerState() {
+  const payload = buildLedgerPayload();
+  if (!payload) {
+    return null;
+  }
+
+  const response = await apiRequest('/api/ledger/save', {
+    method: 'POST',
+    body: payload
+  });
+
+  if (response.monthlyBudget) {
+    hydrateAllocationFromBudget(response.monthlyBudget);
+    hydrateDashboardFromBudget(response.monthlyBudget);
+    syncPersistedState({
+      incomeProfile: persistedAppState.incomeProfile,
+      monthlyBudget: response.monthlyBudget,
+      hasCompletedOnboarding: Boolean(persistedAppState.incomeProfile && response.monthlyBudget)
+    });
+  }
+
+  return response;
+}
+
+async function persistDashboardSilently() {
+  if (!currentUser || !dashboardState) {
+    return;
+  }
+
+  try {
+    await saveLedgerState();
+    renderAllocationScreen();
+    renderDashboard();
+  } catch (error) {
+    if (transactionFeedback) {
+      transactionFeedback.textContent = error.message || 'We could not save that spending entry yet.';
+    }
+  }
+}
+
 async function apiRequest(path, options = {}) {
   const response = await fetch(path, {
     method: options.method || 'GET',
@@ -1496,10 +1813,11 @@ async function loadCurrentUser() {
   updateHeaderAuthState();
 
   try {
-    const payload = await apiRequest('/api/auth/me');
-    saveCurrentUser(payload.user || null);
+    const payload = await loadAppState();
+    routeAuthenticatedUser(payload);
   } catch {
     saveCurrentUser(null);
+    syncPersistedState();
   }
 }
 
@@ -1714,7 +2032,7 @@ function formatHistoryDate(value) {
   }).format(parsed);
 }
 
-function handleTransactionSubmit(event) {
+async function handleTransactionSubmit(event) {
   event.preventDefault();
 
   if (!dashboardState) {
@@ -1750,6 +2068,7 @@ function handleTransactionSubmit(event) {
   transactionFeedback.textContent = `${formatCurrencyPrecise(amount)} added to ${match.category.title}.`;
   renderDashboard();
   transactionAmountInput.focus();
+  await persistDashboardSilently();
 }
 
 function populateStates() {
@@ -1897,9 +2216,8 @@ authForms.forEach(form => {
         return;
       }
       closeModal(authModal);
-      showScreen('step-a');
-      currentStep = 1;
-      updateFlowStep();
+      const appState = await loadAppState();
+      routeAuthenticatedUser(appState);
     } finally {
       authRequestInFlight = false;
       setAuthFormLoading(form, false);
@@ -1982,7 +2300,7 @@ deductionInputs.forEach(input => {
   });
 });
 
-nextStepButton.addEventListener('click', () => {
+nextStepButton.addEventListener('click', async () => {
   if (currentStep < 4) {
     previousStep = currentStep;
     currentStep += 1;
@@ -1991,8 +2309,7 @@ nextStepButton.addEventListener('click', () => {
   }
 
   updateSummary();
-  initializeAllocationScreen();
-  showScreen('allocation');
+  await saveOnboardingAndOpenLedger();
 });
 
 backStepButton.addEventListener('click', () => {
@@ -2005,7 +2322,12 @@ backStepButton.addEventListener('click', () => {
 
 allocationSections?.addEventListener('click', handleAllocationInteraction);
 allocationSections?.addEventListener('input', handleAllocationInput);
-allocationBackButton?.addEventListener('click', () => showScreen('step-a'));
+allocationBackButton?.addEventListener('click', () => {
+  previousStep = currentStep;
+  currentStep = 4;
+  updateFlowStep();
+  showScreen('step-a');
+});
 allocationProceedButton?.addEventListener('click', () => {
   if (!allocationProceedButton.disabled) {
     openModal(allocationConfirmationModal);
@@ -2013,10 +2335,27 @@ allocationProceedButton?.addEventListener('click', () => {
 });
 
 allocationConfirmCancelButton?.addEventListener('click', () => closeModal(allocationConfirmationModal));
-allocationConfirmProceedButton?.addEventListener('click', () => {
-  initializeDashboardScreen();
-  closeModal(allocationConfirmationModal);
-  showScreen('dashboard');
+allocationConfirmProceedButton?.addEventListener('click', async () => {
+  allocationConfirmProceedButton.disabled = true;
+  allocationConfirmProceedButton.textContent = 'Saving...';
+
+  try {
+    initializeDashboardScreen();
+    await saveLedgerState();
+    closeModal(allocationConfirmationModal);
+    renderAllocationScreen();
+    renderDashboard();
+    showScreen('dashboard');
+  } catch (error) {
+    closeModal(allocationConfirmationModal);
+    setAuthFeedback(authLoginFeedback, error.message, 'error');
+    if (error.status === 401) {
+      openModal(authModal);
+    }
+  } finally {
+    allocationConfirmProceedButton.disabled = false;
+    allocationConfirmProceedButton.textContent = 'Proceed & Save';
+  }
 });
 
 allocationConfirmationModal?.addEventListener('click', event => {

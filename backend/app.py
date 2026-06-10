@@ -26,7 +26,21 @@ def create_app() -> Flask:
     db.init_app(app)
     migrate.init_app(app, db)
 
-    from .models import User
+    from .models import (
+        BudgetCategory,
+        BudgetSection,
+        BudgetStatus,
+        DeductionInputMode,
+        FilingStatus,
+        IncomeMethod,
+        IncomeProfile,
+        IncomeProfileDeduction,
+        MonthlyBudget,
+        PayFrequency,
+        TaxTreatment,
+        Transaction,
+        User,
+    )
 
     @app.cli.command("init-db")
     def init_db_command():
@@ -73,6 +87,196 @@ def create_app() -> Flask:
             "firstName": user.first_name,
             "lastName": user.last_name,
         }
+
+    def cents_from_amount(value) -> int:
+        return int(round(float(value or 0) * 100))
+
+    def amount_from_cents(value) -> float:
+        return round((value or 0) / 100, 2)
+
+    def month_start_from_label(month_label: str):
+        return datetime.strptime(month_label, "%B %Y").date().replace(day=1)
+
+    def serialize_income_profile(profile: IncomeProfile | None):
+        if not profile:
+            return None
+
+        return {
+            "id": str(profile.id),
+            "method": profile.income_method.value,
+            "annualSalary": amount_from_cents(profile.annual_salary_cents),
+            "manualMonthlyIncome": amount_from_cents(profile.manual_monthly_take_home_cents),
+            "state": profile.state_code,
+            "filingStatus": profile.filing_status.value if profile.filing_status else None,
+            "payFrequency": profile.pay_frequency.value if profile.pay_frequency else None,
+            "extraWithholding": amount_from_cents(profile.extra_withholding_cents),
+            "extraWithholdingTaxTreatment": profile.extra_withholding_tax_treatment.value,
+            "results": {
+                "monthlyGross": amount_from_cents(profile.estimated_gross_monthly_cents),
+                "monthlyFederalTax": amount_from_cents(profile.estimated_federal_monthly_cents),
+                "monthlyStateTax": amount_from_cents(profile.estimated_state_monthly_cents),
+                "monthlyFica": amount_from_cents(profile.estimated_fica_monthly_cents),
+                "monthlyNet": amount_from_cents(profile.estimated_net_monthly_cents),
+            },
+            "deductions": [
+                {
+                    "key": deduction.deduction_key,
+                    "title": deduction.title,
+                    "inputMode": "yearly" if deduction.input_mode == DeductionInputMode.AMOUNT else "percent",
+                    "yearlyAmount": amount_from_cents(deduction.annual_amount_cents),
+                    "percent": round((deduction.percent_bps or 0) / 100, 2),
+                    "taxTreatment": "pretax" if deduction.tax_treatment == TaxTreatment.PRE_TAX else "posttax",
+                    "enabled": deduction.is_enabled,
+                }
+                for deduction in sorted(profile.deductions, key=lambda item: (item.sort_order, item.created_at))
+            ],
+        }
+
+    def serialize_budget(budget):
+        if not budget:
+            return None
+
+        sections = []
+        for section in sorted(budget.sections, key=lambda item: (item.sort_order, item.created_at)):
+            sections.append(
+                {
+                    "id": str(section.id),
+                    "sectionKey": section.section_key,
+                    "title": section.title,
+                    "categories": [
+                        {
+                            "id": str(category.id),
+                            "title": category.title,
+                            "amount": amount_from_cents(category.allocated_cents),
+                            "isArchived": category.is_archived,
+                        }
+                        for category in sorted(section.categories, key=lambda item: (item.sort_order, item.created_at))
+                        if not category.is_archived
+                    ],
+                }
+            )
+
+        category_map = {
+            str(category.id): (section.title, category.title)
+            for section in budget.sections
+            for category in section.categories
+        }
+
+        transactions = [
+            {
+                "id": str(transaction.id),
+                "amount": amount_from_cents(transaction.amount_cents),
+                "date": transaction.purchased_on.isoformat(),
+                "categoryId": str(transaction.budget_category_id),
+                "categoryTitle": category_map.get(str(transaction.budget_category_id), ("", ""))[1],
+                "sectionTitle": category_map.get(str(transaction.budget_category_id), ("", ""))[0],
+                "memo": transaction.memo or "",
+            }
+            for transaction in sorted(budget.transactions, key=lambda item: item.created_at)
+            if transaction.deleted_at is None
+        ]
+
+        return {
+            "id": str(budget.id),
+            "monthLabel": budget.month_label,
+            "monthlyIncome": amount_from_cents(budget.net_monthly_income_cents),
+            "allocatedTotal": amount_from_cents(budget.allocated_total_cents),
+            "remainingToAllocate": amount_from_cents(budget.remaining_to_allocate_cents),
+            "status": budget.status.value,
+            "sections": sections,
+            "transactions": transactions,
+        }
+
+    def get_current_income_profile(user: User):
+        return (
+            db.session.execute(
+                db.select(IncomeProfile)
+                .filter_by(user_id=user.id, is_current=True)
+                .order_by(IncomeProfile.created_at.desc())
+            )
+            .scalars()
+            .first()
+        )
+
+    def get_current_month_budget(user: User):
+        return (
+            db.session.execute(
+                db.select(MonthlyBudget)
+                .filter_by(user_id=user.id)
+                .order_by(MonthlyBudget.budget_month.desc(), MonthlyBudget.created_at.desc())
+            )
+            .scalars()
+            .first()
+        )
+
+    def save_income_profile(user: User, payload: dict):
+        existing_profile = get_current_income_profile(user)
+        if existing_profile:
+            profile = existing_profile
+        else:
+            profile = IncomeProfile(user_id=user.id, is_current=True)
+            db.session.add(profile)
+
+        method = payload.get("method") or "salary"
+        profile.income_method = IncomeMethod.MANUAL if method == "manual" else IncomeMethod.SALARY
+        profile.annual_salary_cents = cents_from_amount(payload.get("annualSalary")) if method == "salary" else None
+        profile.manual_monthly_take_home_cents = cents_from_amount(payload.get("manualMonthlyIncome")) if method == "manual" else None
+        state_code = payload.get("stateCode")
+        profile.state_code = state_code
+        filing_status = payload.get("filingStatus")
+        profile.filing_status = FilingStatus(filing_status) if filing_status else None
+        pay_frequency = payload.get("payFrequency")
+        profile.pay_frequency = PayFrequency(pay_frequency) if pay_frequency else None
+        profile.extra_withholding_cents = cents_from_amount(payload.get("extraWithholding"))
+        extra_treatment = payload.get("extraWithholdingTaxTreatment") or "posttax"
+        profile.extra_withholding_tax_treatment = TaxTreatment.PRE_TAX if extra_treatment == "pretax" else TaxTreatment.POST_TAX
+
+        results = payload.get("results") or {}
+        profile.estimated_gross_monthly_cents = cents_from_amount(results.get("monthlyGross"))
+        profile.estimated_federal_monthly_cents = cents_from_amount(results.get("monthlyFederalTax"))
+        profile.estimated_state_monthly_cents = cents_from_amount(results.get("monthlyStateTax"))
+        profile.estimated_fica_monthly_cents = cents_from_amount(results.get("monthlyFica"))
+        profile.estimated_net_monthly_cents = cents_from_amount(results.get("monthlyNet"))
+
+        for deduction in list(profile.deductions):
+            db.session.delete(deduction)
+        db.session.flush()
+
+        for index, deduction in enumerate(payload.get("deductions") or []):
+            deduction_mode = deduction.get("inputMode") or "yearly"
+            profile.deductions.append(
+                IncomeProfileDeduction(
+                    deduction_key=deduction.get("key"),
+                    title=deduction.get("title") or deduction.get("key"),
+                    input_mode=DeductionInputMode.AMOUNT if deduction_mode == "yearly" else DeductionInputMode.PERCENT,
+                    annual_amount_cents=cents_from_amount(deduction.get("yearlyAmount")) if deduction.get("yearlyAmount") is not None else 0,
+                    percent_bps=int(round(float(deduction.get("percent") or 0) * 100)),
+                    tax_treatment=TaxTreatment.PRE_TAX if deduction.get("taxTreatment") == "pretax" else TaxTreatment.POST_TAX,
+                    is_enabled=bool(deduction.get("enabled")),
+                    sort_order=index,
+                )
+            )
+
+        return profile
+
+    @app.get("/api/app-state")
+    def app_state():
+        user = get_current_user()
+        if not user:
+            return jsonify({"authenticated": False, "user": None}), 401
+
+        income_profile = get_current_income_profile(user)
+        monthly_budget = get_current_month_budget(user)
+
+        return jsonify(
+            {
+                "authenticated": True,
+                "user": serialize_user(user),
+                "incomeProfile": serialize_income_profile(income_profile),
+                "monthlyBudget": serialize_budget(monthly_budget),
+                "hasCompletedOnboarding": bool(income_profile and monthly_budget),
+            }
+        )
 
     def is_strong_password(password: str) -> bool:
         return len(password) >= 8 and any(character.isdigit() for character in password) and any(
@@ -189,7 +393,117 @@ def create_app() -> Flask:
         session["user_id"] = str(user.id)
         session.permanent = True
 
-        return jsonify({"message": "Logged in successfully.", "user": serialize_user(user)})
+        return jsonify(
+            {
+                "message": "Logged in successfully.",
+                "user": serialize_user(user),
+                "hasCompletedOnboarding": bool(get_current_income_profile(user) and get_current_month_budget(user)),
+            }
+        )
+
+    @app.post("/api/onboarding/save")
+    def save_onboarding():
+        user = get_current_user()
+        if not user:
+            return jsonify({"message": "You must be logged in to save onboarding."}), 401
+
+        payload = request.get_json(silent=True) or {}
+        profile = save_income_profile(user, payload)
+        db.session.commit()
+
+        return jsonify(
+            {
+                "message": "Onboarding saved successfully.",
+                "incomeProfile": serialize_income_profile(profile),
+            }
+        )
+
+    @app.post("/api/ledger/save")
+    def save_ledger():
+        user = get_current_user()
+        if not user:
+            return jsonify({"message": "You must be logged in to save your ledger."}), 401
+
+        payload = request.get_json(silent=True) or {}
+        month_label = payload.get("monthLabel")
+        if not month_label:
+            return jsonify({"message": "Month label is required."}), 400
+
+        budget_month = month_start_from_label(month_label)
+        budget = (
+            db.session.execute(
+                db.select(MonthlyBudget).filter_by(user_id=user.id, budget_month=budget_month)
+            )
+            .scalars()
+            .first()
+        )
+
+        if not budget:
+            budget = MonthlyBudget(user_id=user.id, budget_month=budget_month)
+            db.session.add(budget)
+
+        profile = get_current_income_profile(user)
+        budget.income_profile_id = profile.id if profile else None
+        budget.month_label = month_label
+        budget.net_monthly_income_cents = cents_from_amount(payload.get("monthlyIncome"))
+        budget.allocated_total_cents = cents_from_amount(payload.get("allocatedTotal"))
+        budget.remaining_to_allocate_cents = cents_from_amount(payload.get("remainingToAllocate"))
+        budget.status = BudgetStatus.FINALIZED
+        budget.finalized_at = datetime.utcnow()
+
+        for transaction in list(budget.transactions):
+            db.session.delete(transaction)
+        for section in list(budget.sections):
+            db.session.delete(section)
+        db.session.flush()
+
+        category_id_map = {}
+        for section_index, section_payload in enumerate(payload.get("sections") or []):
+            section = BudgetSection(
+                monthly_budget=budget,
+                title=section_payload.get("title"),
+                section_key=section_payload.get("sectionKey"),
+                sort_order=section_index,
+            )
+            db.session.add(section)
+            db.session.flush()
+
+            for category_index, category_payload in enumerate(section_payload.get("categories") or []):
+                category = BudgetCategory(
+                    budget_section=section,
+                    title=category_payload.get("title"),
+                    category_key=category_payload.get("id"),
+                    allocated_cents=cents_from_amount(category_payload.get("amount")),
+                    sort_order=category_index,
+                    is_archived=False,
+                )
+                db.session.add(category)
+                db.session.flush()
+                category_id_map[category_payload.get("id")] = category.id
+
+        for transaction_payload in payload.get("transactions") or []:
+            mapped_category_id = category_id_map.get(transaction_payload.get("categoryId"))
+            if not mapped_category_id:
+                continue
+            db.session.add(
+                Transaction(
+                    user_id=user.id,
+                    monthly_budget=budget,
+                    budget_category_id=mapped_category_id,
+                    amount_cents=cents_from_amount(transaction_payload.get("amount")),
+                    purchased_on=datetime.strptime(transaction_payload.get("date"), "%Y-%m-%d").date(),
+                    memo=transaction_payload.get("memo") or "",
+                )
+            )
+
+        db.session.commit()
+
+        return jsonify(
+            {
+                "message": "Ledger saved successfully.",
+                "monthlyBudget": serialize_budget(budget),
+            }
+        )
 
     @app.get("/api/auth/me")
     def auth_me():
