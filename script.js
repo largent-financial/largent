@@ -85,9 +85,6 @@ const plaidDisconnectCancel = document.getElementById('plaid-disconnect-cancel')
 const plaidDisconnectConfirm = document.getElementById('plaid-disconnect-confirm');
 const addSpendingToggle = document.getElementById('add-spending-toggle');
 const addSpendingPanel = document.getElementById('add-spending-panel');
-const allocationDonut = document.getElementById('allocation-donut');
-const allocationDonutTotal = document.getElementById('allocation-donut-total');
-const allocationLegend = document.getElementById('allocation-legend');
 const trackingSections = document.getElementById('tracking-sections');
 const transactionForm = document.getElementById('transaction-form');
 const transactionAmountInput = document.getElementById('transaction-amount');
@@ -162,7 +159,6 @@ let persistedAppState = {
   hasCompletedOnboarding: false
 };
 
-const chartPalette = ['#62de6a', '#35bc40', '#1f7a2b', '#a7eaad', '#f5cd47', '#85c5ff', '#ef8b65', '#b6ebb9'];
 const CURRENT_USER_STORAGE_KEY = 'largent-current-user';
 
 const defaultAllocationSections = [
@@ -1330,74 +1326,6 @@ function getDashboardStatusCopy(remaining) {
   return 'On track';
 }
 
-function getAllocationChartItems() {
-  if (!dashboardState) {
-    return [];
-  }
-
-  const totalAllocated = getDashboardAllocatedTotal();
-  if (!totalAllocated) {
-    return [];
-  }
-
-  return getDashboardCategories()
-    .filter(category => category.allocated > 0 && category.title.trim())
-    .sort((left, right) => right.allocated - left.allocated)
-    .map((category, index) => ({
-      ...category,
-      color: chartPalette[index % chartPalette.length],
-      percent: (category.allocated / totalAllocated) * 100
-    }));
-}
-
-function renderAllocationChart() {
-  if (!allocationDonut || !allocationLegend || !allocationDonutTotal) {
-    return;
-  }
-
-  const totalAllocated = getDashboardAllocatedTotal();
-  const items = getAllocationChartItems();
-
-  allocationDonutTotal.textContent = formatCurrencyPrecise(totalAllocated);
-
-  if (!items.length) {
-    allocationDonut.style.background = 'conic-gradient(#eef3ed 0deg 360deg)';
-    allocationLegend.innerHTML = `
-      <div class="allocation-legend-empty">
-        <strong>No allocations yet.</strong>
-        <span>Once your ledger has values, the chart will show your category mix here.</span>
-      </div>
-    `;
-    return;
-  }
-
-  let currentAngle = 0;
-  const gradientStops = items.map(item => {
-    const start = currentAngle;
-    const degrees = (item.percent / 100) * 360;
-    currentAngle += degrees;
-    return `${item.color} ${start}deg ${currentAngle}deg`;
-  });
-
-  allocationDonut.style.background = `conic-gradient(${gradientStops.join(', ')})`;
-  allocationLegend.innerHTML = items
-    .map(item => `
-      <button
-        class="allocation-legend-item${selectedDashboardCategoryId === item.id ? ' allocation-legend-item-active' : ''}"
-        type="button"
-        data-highlight-category-id="${item.id}"
-        aria-pressed="${selectedDashboardCategoryId === item.id ? 'true' : 'false'}"
-      >
-        <span class="allocation-legend-swatch" style="background:${item.color}"></span>
-        <div class="allocation-legend-copy">
-          <strong>${item.title}</strong>
-          <span>${formatCurrencyPrecise(item.allocated)} · ${formatPercent(roundToCents(item.percent))}</span>
-        </div>
-      </button>
-    `)
-    .join('');
-}
-
 function renderTransactionCategoryOptions() {
   if (!transactionCategorySelect) {
     return;
@@ -1525,7 +1453,6 @@ function renderDashboard() {
   renderDashboardSummary();
   renderPlaidSection();
   renderReviewQueue();
-  renderAllocationChart();
   renderTransactionCategoryOptions();
   renderTrackingSections();
   renderTransactionHistory();
@@ -3194,7 +3121,6 @@ plaidDisconnectModal?.addEventListener('click', event => {
     closePlaidDisconnectModal();
   }
 });
-allocationLegend?.addEventListener('click', handleAllocationLegendInteraction);
 transactionForm?.addEventListener('submit', handleTransactionSubmit);
 
 setAuthMode('signup');
