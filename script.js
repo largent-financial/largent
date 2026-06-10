@@ -60,6 +60,10 @@ const dashboardTotalSpent = document.getElementById('dashboard-total-spent');
 const dashboardLeftToSpend = document.getElementById('dashboard-left-to-spend');
 const dashboardStatusPill = document.getElementById('dashboard-status-pill');
 const dashboardBackButton = document.getElementById('dashboard-back');
+const plaidConnectButton = document.getElementById('plaid-connect-button');
+const plaidSummaryRow = document.getElementById('plaid-summary-row');
+const plaidConnectedList = document.getElementById('plaid-connected-list');
+const plaidFeedback = document.getElementById('plaid-feedback');
 const allocationDonut = document.getElementById('allocation-donut');
 const allocationDonutTotal = document.getElementById('allocation-donut-total');
 const allocationLegend = document.getElementById('allocation-legend');
@@ -104,6 +108,16 @@ let selectedDashboardCategoryId = null;
 let currentUser = null;
 let authRequestInFlight = false;
 let authRecoveryStage = 'request';
+let plaidLinkHandler = null;
+let plaidState = {
+  loading: false,
+  connecting: false,
+  entitlement: null,
+  summary: null,
+  items: [],
+  error: '',
+  success: ''
+};
 let persistedAppState = {
   incomeProfile: null,
   monthlyBudget: null,
@@ -320,6 +334,10 @@ function showScreen(screenName) {
     const isActive = screen.dataset.screen === screenName;
     screen.classList.toggle('screen-active', isActive);
   });
+
+  if (screenName === 'dashboard' && currentUser) {
+    loadPlaidStatus({ silent: true });
+  }
 
   window.scrollTo({ top: 0, behavior: 'smooth' });
 }
@@ -1467,10 +1485,223 @@ function renderDashboard() {
   }
 
   renderDashboardSummary();
+  renderPlaidSection();
   renderAllocationChart();
   renderTransactionCategoryOptions();
   renderTrackingSections();
   renderTransactionHistory();
+}
+
+function flattenPlaidAccounts(items = []) {
+  return items.flatMap(item =>
+    (item.accounts || [])
+      .filter(account => account.isActive)
+      .map(account => ({
+        ...account,
+        institutionName: item.institutionName || 'Connected institution',
+        itemStatus: item.status
+      }))
+  );
+}
+
+function setPlaidFeedback(message = '', tone = 'neutral') {
+  if (!plaidFeedback) {
+    return;
+  }
+
+  plaidFeedback.textContent = message;
+  plaidFeedback.dataset.tone = tone;
+}
+
+function renderPlaidSection() {
+  if (!plaidSummaryRow || !plaidConnectedList || !plaidConnectButton) {
+    return;
+  }
+
+  const summary = plaidState.summary;
+  const accounts = flattenPlaidAccounts(plaidState.items);
+  const activeConnected = summary?.activeConnectedAccounts ?? accounts.length;
+  const maxLinked = summary?.maxLinkedAccounts ?? 2;
+  const canLinkMore = summary ? Boolean(summary.canLinkMoreAccounts) : true;
+  const premiumRequired = summary ? Boolean(summary.premiumRequired) : false;
+
+  plaidConnectButton.disabled = plaidState.loading || plaidState.connecting || premiumRequired || !canLinkMore;
+  plaidConnectButton.textContent = plaidState.connecting
+    ? 'Connecting...'
+    : activeConnected > 0 && canLinkMore
+      ? 'Add account'
+      : 'Connect bank';
+
+  plaidSummaryRow.innerHTML = `
+    <div class="plaid-stat">
+      <span>Connected</span>
+      <strong>${activeConnected} / ${maxLinked}</strong>
+    </div>
+    <div class="plaid-stat">
+      <span>Status</span>
+      <strong>${premiumRequired ? 'Premium needed' : canLinkMore ? 'Ready' : 'Limit reached'}</strong>
+    </div>
+  `;
+
+  if (plaidState.error) {
+    setPlaidFeedback(plaidState.error, 'error');
+  } else if (plaidState.success) {
+    setPlaidFeedback(plaidState.success, 'success');
+  } else if (premiumRequired) {
+    setPlaidFeedback('Bank sync is a Premium feature. Once enabled, you can connect up to 2 accounts.', 'neutral');
+  } else if (!canLinkMore) {
+    setPlaidFeedback('You’ve reached your current 2-account bank sync limit.', 'neutral');
+  } else if (plaidState.loading) {
+    setPlaidFeedback('Checking your bank sync status…', 'neutral');
+  } else {
+    setPlaidFeedback('Connect a bank to start pulling in eligible accounts for future transaction review.', 'neutral');
+  }
+
+  if (!accounts.length) {
+    plaidConnectedList.innerHTML = `
+      <div class="plaid-empty-state">
+        <strong>No bank accounts connected yet.</strong>
+        <span>When you connect one, your linked accounts will show up here.</span>
+      </div>
+    `;
+    return;
+  }
+
+  plaidConnectedList.innerHTML = accounts
+    .map(account => `
+      <article class="plaid-account-tile">
+        <div class="plaid-account-copy">
+          <strong>${account.name || account.officialName || 'Connected account'}</strong>
+          <span>${account.institutionName}${account.mask ? ` •••• ${account.mask}` : ''}</span>
+        </div>
+        <div class="plaid-account-meta">
+          <span>${account.subtype || account.type || 'Account'}</span>
+          <strong>${account.itemStatus === 'active' ? 'Connected' : 'Needs attention'}</strong>
+        </div>
+      </article>
+    `)
+    .join('');
+}
+
+async function loadPlaidStatus({ silent = false } = {}) {
+  if (!currentUser) {
+    plaidState = {
+      loading: false,
+      connecting: false,
+      entitlement: null,
+      summary: null,
+      items: [],
+      error: '',
+      success: ''
+    };
+    renderPlaidSection();
+    return null;
+  }
+
+  plaidState.loading = true;
+  if (!silent) {
+    plaidState.error = '';
+  }
+  renderPlaidSection();
+
+  try {
+    const payload = await apiRequest('/api/plaid/status');
+    plaidState = {
+      ...plaidState,
+      loading: false,
+      entitlement: payload.entitlement || null,
+      summary: payload.summary || null,
+      items: payload.items || [],
+      error: ''
+    };
+    renderPlaidSection();
+    return payload;
+  } catch (error) {
+    plaidState.loading = false;
+    if (error.status === 401) {
+      plaidState.entitlement = null;
+      plaidState.summary = null;
+      plaidState.items = [];
+      plaidState.error = '';
+    } else {
+      plaidState.error = error.message || 'We could not load your bank sync status.';
+    }
+    renderPlaidSection();
+    return null;
+  }
+}
+
+function destroyPlaidHandler() {
+  if (plaidLinkHandler && typeof plaidLinkHandler.destroy === 'function') {
+    plaidLinkHandler.destroy();
+  }
+  plaidLinkHandler = null;
+}
+
+async function startPlaidLinkFlow() {
+  if (!currentUser || plaidState.connecting) {
+    return;
+  }
+
+  if (!window.Plaid || typeof window.Plaid.create !== 'function') {
+    plaidState.error = 'Plaid Link did not load yet. Please try again in a moment.';
+    plaidState.success = '';
+    renderPlaidSection();
+    return;
+  }
+
+  plaidState.connecting = true;
+  plaidState.error = '';
+  plaidState.success = '';
+  renderPlaidSection();
+
+  try {
+    const linkPayload = await apiRequest('/api/plaid/link-token', { method: 'POST' });
+    destroyPlaidHandler();
+
+    plaidLinkHandler = window.Plaid.create({
+      token: linkPayload.linkToken,
+      onSuccess: async (publicToken, metadata) => {
+        try {
+          await apiRequest('/api/plaid/exchange-public-token', {
+            method: 'POST',
+            body: {
+              publicToken,
+              metadata
+            }
+          });
+          plaidState.success = 'Bank account connected successfully.';
+          plaidState.error = '';
+          await loadPlaidStatus({ silent: true });
+        } catch (error) {
+          plaidState.error = error.message || 'We could not finish connecting that bank.';
+          plaidState.success = '';
+          renderPlaidSection();
+        } finally {
+          plaidState.connecting = false;
+          destroyPlaidHandler();
+          renderPlaidSection();
+        }
+      },
+      onExit: error => {
+        plaidState.connecting = false;
+        if (error) {
+          plaidState.error = error.display_message || error.error_message || 'Plaid was closed before the connection finished.';
+          plaidState.success = '';
+        }
+        destroyPlaidHandler();
+        renderPlaidSection();
+      }
+    });
+
+    plaidLinkHandler.open();
+  } catch (error) {
+    plaidState.connecting = false;
+    plaidState.error = error.message || 'We could not start bank connection right now.';
+    plaidState.success = '';
+    destroyPlaidHandler();
+    renderPlaidSection();
+  }
 }
 
 function hydrateDashboardFromBudget(budget) {
@@ -1732,6 +1963,8 @@ function routeAuthenticatedUser(appState) {
     showScreen('landing');
     return;
   }
+
+  loadPlaidStatus({ silent: true });
 
   if (appState?.monthlyBudget) {
     currentStep = 4;
@@ -2436,6 +2669,7 @@ authModal?.addEventListener('click', event => {
 });
 
 dashboardBackButton?.addEventListener('click', () => showScreen('allocation'));
+plaidConnectButton?.addEventListener('click', startPlaidLinkFlow);
 allocationLegend?.addEventListener('click', handleAllocationLegendInteraction);
 transactionForm?.addEventListener('submit', handleTransactionSubmit);
 

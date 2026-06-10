@@ -16,6 +16,7 @@
   <link rel="apple-touch-icon" href="./largent-black.png" />
   <link rel="manifest" href="./manifest.webmanifest" />
   <link rel="stylesheet" href="./style.css" />
+  <script src="https://cdn.plaid.com/link/v2/stable/link-initialize.js"></script>
 </head>
 <body>
   <a class="skip-link" href="#main">Skip to main content</a>
@@ -420,6 +421,22 @@
                 <strong class="metric-value" id="dashboard-main-remaining">$0.00</strong>
               </div>
             </div>
+          </article>
+
+          <article class="plaid-card card" aria-labelledby="plaid-sync-title">
+            <div class="section-head plaid-head">
+              <div>
+                <h3 id="plaid-sync-title">Bank sync</h3>
+                <p>Connect up to 2 accounts and keep Largent closer to your real spending.</p>
+              </div>
+              <button class="button button-primary plaid-connect-button" type="button" id="plaid-connect-button">
+                Connect bank
+              </button>
+            </div>
+
+            <div class="plaid-summary-row" id="plaid-summary-row" aria-live="polite"></div>
+            <p class="form-feedback plaid-feedback" id="plaid-feedback" role="status" aria-live="polite"></p>
+            <div class="plaid-connected-list" id="plaid-connected-list"></div>
           </article>
 
           <article class="transaction-card card" aria-labelledby="transaction-entry-title">
