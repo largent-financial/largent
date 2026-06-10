@@ -1671,6 +1671,14 @@ async function loadAppState() {
 }
 
 function routeAuthenticatedUser(appState) {
+  if (!appState?.authenticated) {
+    currentStep = 1;
+    previousStep = 1;
+    updateFlowStep();
+    showScreen('landing');
+    return;
+  }
+
   if (appState?.monthlyBudget) {
     currentStep = 4;
     previousStep = 4;
