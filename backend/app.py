@@ -94,6 +94,32 @@ def create_app() -> Flask:
             db.session.commit()
         click.echo("Auth recovery columns synced.")
 
+    @app.cli.command("sync-user-email-preferences")
+    def sync_user_email_preferences_command():
+        raw_connection = db.engine.raw_connection()
+        try:
+            with raw_connection.cursor() as cursor:
+                cursor.execute(
+                    """
+                    alter table users
+                    add column if not exists monthly_summary_emails_enabled boolean not null default true,
+                    add column if not exists security_emails_enabled boolean not null default true
+                    """
+                )
+                cursor.execute(
+                    """
+                    update users
+                    set
+                      monthly_summary_emails_enabled = coalesce(monthly_summary_emails_enabled, true),
+                      security_emails_enabled = coalesce(security_emails_enabled, true)
+                    """
+                )
+            raw_connection.commit()
+        finally:
+            raw_connection.close()
+
+        click.echo("User email preference columns synced.")
+
     @app.cli.command("sync-banking-billing-schema")
     def sync_banking_billing_schema_command():
         raw_connection = db.engine.raw_connection()
@@ -265,6 +291,8 @@ def create_app() -> Flask:
             "email": user.email,
             "firstName": user.first_name,
             "lastName": user.last_name,
+            "monthlySummaryEmailsEnabled": user.monthly_summary_emails_enabled,
+            "securityEmailsEnabled": user.security_emails_enabled,
         }
 
     def serialize_subscription(subscription: UserSubscription | None):
@@ -1600,6 +1628,8 @@ def create_app() -> Flask:
         first_name = (payload.get("firstName") or "").strip()
         last_name = (payload.get("lastName") or "").strip()
         email = (payload.get("email") or "").strip().lower()
+        monthly_summary_emails_enabled = payload.get("monthlySummaryEmailsEnabled")
+        security_emails_enabled = payload.get("securityEmailsEnabled")
 
         if not first_name or not last_name or not email:
             return jsonify({"message": "First name, last name, and email are all required."}), 400
@@ -1613,6 +1643,10 @@ def create_app() -> Flask:
         user.first_name = first_name
         user.last_name = last_name
         user.email = email
+        if monthly_summary_emails_enabled is not None:
+            user.monthly_summary_emails_enabled = bool(monthly_summary_emails_enabled)
+        if security_emails_enabled is not None:
+            user.security_emails_enabled = bool(security_emails_enabled)
         db.session.commit()
 
         return jsonify({"message": "Account updated successfully.", "user": serialize_user(user)})

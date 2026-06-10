@@ -28,6 +28,8 @@ create table users (
   last_name varchar(100) not null,
   is_active boolean not null default true,
   marketing_opt_in boolean not null default false,
+  monthly_summary_emails_enabled boolean not null default true,
+  security_emails_enabled boolean not null default true,
   email_verified_at timestamptz,
   last_login_at timestamptz,
   pw_code_hash text,

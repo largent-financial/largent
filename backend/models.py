@@ -87,6 +87,8 @@ class User(TimestampMixin, db.Model):
     last_name: Mapped[str] = mapped_column(String(100), nullable=False)
     is_active: Mapped[bool] = mapped_column(default=True, nullable=False)
     marketing_opt_in: Mapped[bool] = mapped_column(default=False, nullable=False)
+    monthly_summary_emails_enabled: Mapped[bool] = mapped_column(default=True, nullable=False)
+    security_emails_enabled: Mapped[bool] = mapped_column(default=True, nullable=False)
     email_verified_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     last_login_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     pw_code_hash: Mapped[str | None] = mapped_column(String(255))
