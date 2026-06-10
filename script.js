@@ -54,7 +54,6 @@ const authRecoveryBackButton = document.getElementById('auth-recovery-back');
 const authRecoveryResetFields = document.getElementById('auth-recovery-reset-fields');
 const authRecoveryCopy = document.getElementById('auth-recovery-copy');
 const dashboardMonthTitle = document.getElementById('dashboard-month-title');
-const dashboardMainRemaining = document.getElementById('dashboard-main-remaining');
 const dashboardTotalAllocated = document.getElementById('dashboard-total-allocated');
 const dashboardTotalSpent = document.getElementById('dashboard-total-spent');
 const dashboardLeftToSpend = document.getElementById('dashboard-left-to-spend');
@@ -1383,7 +1382,6 @@ function renderDashboardSummary() {
   const remaining = getDashboardRemainingTotal();
 
   dashboardMonthTitle.textContent = dashboardState.monthLabel;
-  dashboardMainRemaining.textContent = formatCurrencyPrecise(remaining);
   dashboardTotalAllocated.textContent = formatCurrencyPrecise(allocated);
   dashboardTotalSpent.textContent = formatCurrencyPrecise(spent);
   dashboardLeftToSpend.textContent = formatCurrencyPrecise(remaining);
