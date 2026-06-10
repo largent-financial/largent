@@ -1670,13 +1670,11 @@ h3 {
 }
 
 .plaid-summary-row {
-  margin-top: 10px;
+  margin-top: 8px;
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 8px;
 }
 
-.plaid-stat,
 .plaid-account-tile,
 .plaid-empty-state {
   padding: 10px 12px;
@@ -1685,7 +1683,7 @@ h3 {
   background: linear-gradient(180deg, rgba(255, 255, 255, 0.03), rgba(98, 222, 106, 0.05));
 }
 
-.plaid-stat span,
+.plaid-progress-copy span,
 .plaid-account-copy span,
 .plaid-account-meta span,
 .plaid-empty-state span {
@@ -1693,22 +1691,47 @@ h3 {
   color: var(--muted);
 }
 
-.plaid-stat span {
-  font-size: 0.8rem;
-  text-transform: uppercase;
-  letter-spacing: 0.04em;
-  font-weight: 700;
+.plaid-progress {
+  display: grid;
+  gap: 6px;
 }
 
-.plaid-stat strong {
+.plaid-progress-track {
+  height: 3px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.1);
+  overflow: hidden;
+}
+
+.plaid-progress-fill {
   display: block;
-  margin-top: 4px;
-  font-size: 1.05rem;
-  letter-spacing: -0.03em;
+  height: 100%;
+  border-radius: inherit;
+  background: linear-gradient(90deg, #62de6a, #8cf694);
+  box-shadow: 0 0 10px rgba(98, 222, 106, 0.4);
+}
+
+.plaid-progress-copy {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.plaid-progress-copy span {
+  font-size: 0.8rem;
+  line-height: 1.35;
+}
+
+.plaid-progress-copy strong {
+  white-space: nowrap;
+  font-size: 0.82rem;
+  color: #8cf694;
 }
 
 .plaid-feedback {
-  margin-top: 10px;
+  margin-top: 8px;
+  font-size: 0.82rem;
 }
 
 .plaid-feedback[data-tone='error'] {
@@ -1729,6 +1752,7 @@ h3 {
   align-items: center;
   justify-content: space-between;
   gap: 10px;
+  min-height: 64px;
 }
 
 .plaid-account-copy strong,
@@ -1737,18 +1761,39 @@ h3 {
 }
 
 .plaid-account-copy strong {
-  font-size: 0.98rem;
+  font-size: 0.94rem;
 }
 
 .plaid-account-copy span,
 .plaid-account-meta span,
 .plaid-account-meta strong,
 .plaid-empty-state span {
-  font-size: 0.9rem;
+  font-size: 0.82rem;
 }
 
 .plaid-account-meta {
+  display: grid;
+  justify-items: end;
+  gap: 6px;
   text-align: right;
+}
+
+.plaid-account-remove {
+  min-height: 30px;
+  min-width: 74px;
+  padding: 5px 10px;
+  border-radius: 999px;
+  border: 1px solid rgba(98, 222, 106, 0.18);
+  background: rgba(98, 222, 106, 0.12);
+  color: #ffffff;
+  font-weight: 700;
+  font-size: 0.78rem;
+}
+
+.plaid-account-remove:hover,
+.plaid-account-remove:focus-visible {
+  border-color: rgba(98, 222, 106, 0.34);
+  background: rgba(98, 222, 106, 0.18);
 }
 
 .plaid-empty-state {
@@ -2690,6 +2735,12 @@ h3 {
 
   .plaid-account-meta {
     text-align: left;
+    justify-items: start;
+  }
+
+  .plaid-progress-copy {
+    align-items: flex-start;
+    flex-direction: column;
   }
 
   .review-item-side {

@@ -1553,21 +1553,26 @@ function renderPlaidSection() {
   const canLinkMore = summary ? Boolean(summary.canLinkMoreAccounts) : true;
   const premiumRequired = summary ? Boolean(summary.premiumRequired) : false;
 
-  plaidConnectButton.disabled = plaidState.loading || plaidState.connecting || premiumRequired || !canLinkMore;
+  plaidConnectButton.disabled = plaidState.loading || plaidState.connecting || premiumRequired;
   plaidConnectButton.textContent = plaidState.connecting
     ? 'Connecting...'
-    : activeConnected > 0 && canLinkMore
-      ? 'Add account'
-      : 'Connect bank';
+    : premiumRequired
+      ? 'Premium'
+      : canLinkMore
+        ? activeConnected > 0 ? 'Add account' : 'Connect bank'
+        : 'Manage accounts';
+
+  const progressPercent = maxLinked ? Math.min(100, Math.max(0, (activeConnected / maxLinked) * 100)) : 0;
 
   plaidSummaryRow.innerHTML = `
-    <div class="plaid-stat">
-      <span>Connected</span>
-      <strong>${activeConnected} / ${maxLinked}</strong>
-    </div>
-    <div class="plaid-stat">
-      <span>Status</span>
-      <strong>${premiumRequired ? 'Premium needed' : canLinkMore ? 'Ready' : 'Limit reached'}</strong>
+    <div class="plaid-progress">
+      <div class="plaid-progress-track" aria-hidden="true">
+        <span class="plaid-progress-fill" style="width:${progressPercent}%"></span>
+      </div>
+      <div class="plaid-progress-copy">
+        <span>You can connect up to 2 bank accounts to track spending from.</span>
+        <strong>${activeConnected} of ${maxLinked} connected</strong>
+      </div>
     </div>
   `;
 
@@ -1577,10 +1582,10 @@ function renderPlaidSection() {
     setPlaidFeedback(plaidState.success, 'success');
   } else if (premiumRequired) {
     setPlaidFeedback('Bank sync is a Premium feature. Once enabled, you can connect up to 2 accounts.', 'neutral');
-  } else if (!canLinkMore) {
-    setPlaidFeedback('You’ve reached your current 2-account bank sync limit.', 'neutral');
   } else if (plaidState.loading) {
     setPlaidFeedback('Checking your bank sync status…', 'neutral');
+  } else if (accounts.length) {
+    setPlaidFeedback('Use Change on any connected account if you want to swap in a different one.', 'neutral');
   } else {
     setPlaidFeedback('Connect a bank to start pulling in eligible accounts for future transaction review.', 'neutral');
   }
@@ -1604,11 +1609,39 @@ function renderPlaidSection() {
         </div>
         <div class="plaid-account-meta">
           <span>${account.subtype || account.type || 'Account'}</span>
-          <strong>${account.itemStatus === 'active' ? 'Connected' : 'Needs attention'}</strong>
+          <button class="plaid-account-remove" type="button" data-disconnect-plaid-account="${account.id}" aria-label="Disconnect ${account.name || account.officialName || 'connected account'}">
+            Change
+          </button>
         </div>
       </article>
     `)
     .join('');
+}
+
+async function disconnectPlaidAccount(accountId) {
+  if (!accountId) {
+    return;
+  }
+
+  const confirmed = window.confirm('Remove this connected bank account? You can reconnect a different one right after.');
+  if (!confirmed) {
+    return;
+  }
+
+  plaidState.error = '';
+  plaidState.success = '';
+  renderPlaidSection();
+
+  try {
+    const payload = await apiRequest(`/api/plaid/accounts/${accountId}/disconnect`, { method: 'POST' });
+    plaidState.summary = payload.summary || plaidState.summary;
+    plaidState.items = payload.items || plaidState.items;
+    plaidState.success = payload.message || 'Connected bank account removed. You can add another one now.';
+    renderPlaidSection();
+  } catch (error) {
+    plaidState.error = error.message || 'We could not update that connected account.';
+    renderPlaidSection();
+  }
 }
 
 function setReviewFeedback(message = '', tone = 'neutral') {
@@ -1992,6 +2025,16 @@ function destroyPlaidHandler() {
 
 async function startPlaidLinkFlow() {
   if (!currentUser || plaidState.connecting) {
+    return;
+  }
+
+  const summary = plaidState.summary;
+  const activeConnected = summary?.activeConnectedAccounts ?? flattenPlaidAccounts(plaidState.items).length;
+  const maxLinked = summary?.maxLinkedAccounts ?? 2;
+  if (activeConnected >= maxLinked) {
+    plaidState.error = 'You already have 2 connected accounts. Use Change on one below to swap it out.';
+    plaidState.success = '';
+    renderPlaidSection();
     return;
   }
 
@@ -3025,6 +3068,12 @@ authModal?.addEventListener('click', event => {
 dashboardBackButton?.addEventListener('click', () => showScreen('allocation'));
 reviewRefreshButton?.addEventListener('click', syncPlaidTransactions);
 plaidConnectButton?.addEventListener('click', startPlaidLinkFlow);
+plaidConnectedList?.addEventListener('click', event => {
+  const disconnectButton = event.target.closest('[data-disconnect-plaid-account]');
+  if (disconnectButton) {
+    disconnectPlaidAccount(disconnectButton.dataset.disconnectPlaidAccount);
+  }
+});
 addSpendingToggle?.addEventListener('click', () => {
   setAddSpendingExpanded(!addSpendingExpanded);
 });
