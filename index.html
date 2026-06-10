@@ -698,6 +698,23 @@
     </div>
   </div>
 
+  <div class="modal-shell" id="plaid-disconnect-modal" hidden>
+    <div class="modal-backdrop" data-close-modal="plaid-disconnect-modal"></div>
+    <div class="modal-card card" role="alertdialog" aria-modal="true" aria-labelledby="plaid-disconnect-title">
+      <button class="modal-close" type="button" id="plaid-disconnect-close" aria-label="Close bank account change modal">×</button>
+      <div class="modal-copy">
+        <p class="eyebrow">Change connected account</p>
+        <h3 id="plaid-disconnect-title">Swap this bank account?</h3>
+        <p id="plaid-disconnect-copy">We’ll remove this connected account first so you can connect a different one right after.</p>
+      </div>
+      <p class="form-feedback" id="plaid-disconnect-feedback" role="status" aria-live="polite"></p>
+      <div class="modal-actions">
+        <button class="button button-secondary" type="button" id="plaid-disconnect-cancel">Cancel</button>
+        <button class="button button-primary" type="button" id="plaid-disconnect-confirm">Remove account</button>
+      </div>
+    </div>
+  </div>
+
   <script src="./state-tax-data.js"></script>
   <script src="./script.js"></script>
 </body>

@@ -77,6 +77,12 @@ const reviewSheetFeedback = document.getElementById('review-sheet-feedback');
 const reviewSheetDismiss = document.getElementById('review-sheet-dismiss');
 const reviewSheetCancel = document.getElementById('review-sheet-cancel');
 const reviewSheetSave = document.getElementById('review-sheet-save');
+const plaidDisconnectModal = document.getElementById('plaid-disconnect-modal');
+const plaidDisconnectClose = document.getElementById('plaid-disconnect-close');
+const plaidDisconnectCopy = document.getElementById('plaid-disconnect-copy');
+const plaidDisconnectFeedback = document.getElementById('plaid-disconnect-feedback');
+const plaidDisconnectCancel = document.getElementById('plaid-disconnect-cancel');
+const plaidDisconnectConfirm = document.getElementById('plaid-disconnect-confirm');
 const addSpendingToggle = document.getElementById('add-spending-toggle');
 const addSpendingPanel = document.getElementById('add-spending-panel');
 const allocationDonut = document.getElementById('allocation-donut');
@@ -143,6 +149,11 @@ let reviewState = {
   success: '',
   activeReviewId: null,
   selectedCategoryId: null
+};
+let plaidDisconnectState = {
+  accountId: null,
+  accountName: '',
+  saving: false
 };
 let addSpendingExpanded = false;
 let persistedAppState = {
@@ -1618,29 +1629,102 @@ function renderPlaidSection() {
     .join('');
 }
 
-async function disconnectPlaidAccount(accountId) {
-  if (!accountId) {
+function findPlaidAccountById(accountId) {
+  return flattenPlaidAccounts(plaidState.items).find(account => account.id === accountId) || null;
+}
+
+function openPlaidDisconnectModal(accountId) {
+  const account = findPlaidAccountById(accountId);
+  if (!account) {
     return;
   }
 
-  const confirmed = window.confirm('Remove this connected bank account? You can reconnect a different one right after.');
-  if (!confirmed) {
+  plaidDisconnectState.accountId = account.id;
+  plaidDisconnectState.accountName = account.name || account.officialName || 'this connected account';
+  plaidDisconnectState.saving = false;
+
+  if (plaidDisconnectCopy) {
+    plaidDisconnectCopy.textContent = `We’ll remove ${plaidDisconnectState.accountName} first so you can connect a different account right after.`;
+  }
+  if (plaidDisconnectFeedback) {
+    plaidDisconnectFeedback.textContent = '';
+  }
+  if (plaidDisconnectConfirm) {
+    plaidDisconnectConfirm.disabled = false;
+    plaidDisconnectConfirm.textContent = 'Remove account';
+  }
+  if (plaidDisconnectCancel) {
+    plaidDisconnectCancel.disabled = false;
+  }
+  if (plaidDisconnectClose) {
+    plaidDisconnectClose.disabled = false;
+  }
+
+  openModal(plaidDisconnectModal);
+}
+
+function closePlaidDisconnectModal() {
+  if (plaidDisconnectState.saving) {
+    return;
+  }
+
+  plaidDisconnectState.accountId = null;
+  plaidDisconnectState.accountName = '';
+  if (plaidDisconnectFeedback) {
+    plaidDisconnectFeedback.textContent = '';
+  }
+  closeModal(plaidDisconnectModal);
+}
+
+async function disconnectPlaidAccount() {
+  if (!plaidDisconnectState.accountId || plaidDisconnectState.saving) {
     return;
   }
 
   plaidState.error = '';
   plaidState.success = '';
+  plaidDisconnectState.saving = true;
+  if (plaidDisconnectFeedback) {
+    plaidDisconnectFeedback.textContent = '';
+  }
+  if (plaidDisconnectConfirm) {
+    plaidDisconnectConfirm.disabled = true;
+    plaidDisconnectConfirm.textContent = 'Removing...';
+  }
+  if (plaidDisconnectCancel) {
+    plaidDisconnectCancel.disabled = true;
+  }
+  if (plaidDisconnectClose) {
+    plaidDisconnectClose.disabled = true;
+  }
   renderPlaidSection();
 
   try {
-    const payload = await apiRequest(`/api/plaid/accounts/${accountId}/disconnect`, { method: 'POST' });
+    const payload = await apiRequest(`/api/plaid/accounts/${plaidDisconnectState.accountId}/disconnect`, { method: 'POST' });
     plaidState.summary = payload.summary || plaidState.summary;
     plaidState.items = payload.items || plaidState.items;
     plaidState.success = payload.message || 'Connected bank account removed. You can add another one now.';
+    closeModal(plaidDisconnectModal);
+    plaidDisconnectState.accountId = null;
+    plaidDisconnectState.accountName = '';
     renderPlaidSection();
   } catch (error) {
-    plaidState.error = error.message || 'We could not update that connected account.';
+    if (plaidDisconnectFeedback) {
+      plaidDisconnectFeedback.textContent = error.message || 'We could not update that connected account.';
+    }
     renderPlaidSection();
+  } finally {
+    plaidDisconnectState.saving = false;
+    if (plaidDisconnectConfirm) {
+      plaidDisconnectConfirm.disabled = false;
+      plaidDisconnectConfirm.textContent = 'Remove account';
+    }
+    if (plaidDisconnectCancel) {
+      plaidDisconnectCancel.disabled = false;
+    }
+    if (plaidDisconnectClose) {
+      plaidDisconnectClose.disabled = false;
+    }
   }
 }
 
@@ -3071,7 +3155,7 @@ plaidConnectButton?.addEventListener('click', startPlaidLinkFlow);
 plaidConnectedList?.addEventListener('click', event => {
   const disconnectButton = event.target.closest('[data-disconnect-plaid-account]');
   if (disconnectButton) {
-    disconnectPlaidAccount(disconnectButton.dataset.disconnectPlaidAccount);
+    openPlaidDisconnectModal(disconnectButton.dataset.disconnectPlaidAccount);
   }
 });
 addSpendingToggle?.addEventListener('click', () => {
@@ -3099,6 +3183,15 @@ reviewSheetModal?.addEventListener('click', event => {
   const closeTarget = event.target.closest('[data-close-modal]');
   if (closeTarget) {
     closeReviewSheet();
+  }
+});
+plaidDisconnectClose?.addEventListener('click', closePlaidDisconnectModal);
+plaidDisconnectCancel?.addEventListener('click', closePlaidDisconnectModal);
+plaidDisconnectConfirm?.addEventListener('click', disconnectPlaidAccount);
+plaidDisconnectModal?.addEventListener('click', event => {
+  const closeTarget = event.target.closest('[data-close-modal]');
+  if (closeTarget) {
+    closePlaidDisconnectModal();
   }
 });
 allocationLegend?.addEventListener('click', handleAllocationLegendInteraction);
