@@ -82,6 +82,10 @@ const dashboardTotalSpent = document.getElementById('dashboard-total-spent');
 const dashboardLeftToSpend = document.getElementById('dashboard-left-to-spend');
 const dashboardStatusPill = document.getElementById('dashboard-status-pill');
 const dashboardBackButton = document.getElementById('dashboard-back');
+const premiumUpsellCard = document.getElementById('premium-upsell-card');
+const premiumInfoToggle = document.getElementById('premium-info-toggle');
+const premiumInfoPanel = document.getElementById('premium-info-panel');
+const premiumUpsellButton = document.getElementById('premium-upsell-button');
 const plaidConnectButton = document.getElementById('plaid-connect-button');
 const plaidSummaryRow = document.getElementById('plaid-summary-row');
 const plaidConnectedList = document.getElementById('plaid-connected-list');
@@ -402,6 +406,9 @@ function showScreen(screenName) {
   if (screenName === 'dashboard' && currentUser) {
     loadPlaidStatus({ silent: true });
     loadPlaidReviewQueue({ silent: true });
+    loadPremiumStatus()
+      .then(() => renderPremiumUpsellCard())
+      .catch(() => renderPremiumUpsellCard());
   }
 
   window.scrollTo({ top: 0, behavior: 'smooth' });
@@ -1481,11 +1488,60 @@ function renderDashboard() {
   }
 
   renderDashboardSummary();
+  renderPremiumUpsellCard();
   renderPlaidSection();
   renderReviewQueue();
   renderTransactionCategoryOptions();
   renderTrackingSections();
   renderTransactionHistory();
+}
+
+function isPremiumActive() {
+  if (profileState.premium?.entitlement) {
+    return Boolean(profileState.premium.entitlement.premiumAccess && profileState.premium.entitlement.bankSyncEnabled);
+  }
+  if (plaidState.entitlement) {
+    return Boolean(plaidState.entitlement.premiumAccess && plaidState.entitlement.bankSyncEnabled);
+  }
+  if (plaidState.summary) {
+    return !Boolean(plaidState.summary.premiumRequired);
+  }
+  return false;
+}
+
+function renderPremiumUpsellCard() {
+  if (!premiumUpsellCard) {
+    return;
+  }
+
+  const shouldShow = Boolean(currentUser) && !isPremiumActive();
+  premiumUpsellCard.hidden = !shouldShow;
+
+  if (!shouldShow && premiumInfoPanel && premiumInfoToggle) {
+    premiumInfoPanel.hidden = true;
+    premiumInfoToggle.setAttribute('aria-expanded', 'false');
+  }
+}
+
+function togglePremiumInfoPanel() {
+  if (!premiumInfoPanel || !premiumInfoToggle) {
+    return;
+  }
+
+  const willOpen = premiumInfoPanel.hidden;
+  premiumInfoPanel.hidden = !willOpen;
+  premiumInfoToggle.setAttribute('aria-expanded', String(willOpen));
+}
+
+function openPremiumBillingExperience(message = '') {
+  if (!currentUser) {
+    return;
+  }
+
+  openProfileModal('billing');
+  if (message) {
+    setProfileFeedback(profileBillingFeedback, message, 'success');
+  }
 }
 
 function flattenPlaidAccounts(items = []) {
@@ -3464,8 +3520,7 @@ profileAccountConfirmModal?.addEventListener('click', event => {
 profileResetPasswordButton?.addEventListener('click', handleResetPasswordFromProfile);
 headerSignoutButton?.addEventListener('click', handleSignOut);
 profileUpgradeButton?.addEventListener('click', () => {
-  setProfileView('billing');
-  setProfileFeedback(profileBillingFeedback, 'Premium checkout wiring is the next step. This space is ready for Stripe when you are.', 'success');
+  openPremiumBillingExperience('Premium checkout wiring is the next step. This space is ready for Stripe when you are.');
 });
 profileManagePremiumButton?.addEventListener('click', () => {
   setProfileView('billing');
@@ -3483,6 +3538,10 @@ profileConnectBankButton?.addEventListener('click', async () => {
 
 dashboardBackButton?.addEventListener('click', () => showScreen('allocation'));
 reviewRefreshButton?.addEventListener('click', syncPlaidTransactions);
+premiumInfoToggle?.addEventListener('click', togglePremiumInfoPanel);
+premiumUpsellButton?.addEventListener('click', () => {
+  openPremiumBillingExperience('Premium checkout wiring is the next step. This space is ready for Stripe when you are.');
+});
 plaidConnectButton?.addEventListener('click', startPlaidLinkFlow);
 plaidConnectedList?.addEventListener('click', event => {
   const disconnectButton = event.target.closest('[data-disconnect-plaid-account]');

@@ -1860,6 +1860,7 @@ h3 {
 
 .transaction-card,
 .overview-card,
+.premium-upsell-card,
 .plaid-card,
 .review-card,
 .chart-card,
@@ -1903,6 +1904,7 @@ h3 {
   align-items: center;
 }
 
+.premium-upsell-card,
 .plaid-card,
 .review-card {
   background: linear-gradient(180deg, #0d0f0e, #131816);
@@ -1914,11 +1916,14 @@ h3 {
     0 4px 10px rgba(15, 17, 16, 0.16);
 }
 
+.premium-upsell-card::before,
 .plaid-card::before,
 .review-card::before {
   background: linear-gradient(90deg, rgba(98, 222, 106, 0.48), rgba(98, 222, 106, 0.12), transparent 72%);
 }
 
+.premium-upsell-card h3,
+.premium-upsell-card strong,
 .plaid-card h3,
 .review-card h3,
 .plaid-card strong,
@@ -1926,11 +1931,72 @@ h3 {
   color: #ffffff;
 }
 
+.premium-upsell-card p,
+.premium-upsell-card span,
 .plaid-card p,
 .review-card p,
 .plaid-card span,
 .review-card span {
   color: rgba(232, 243, 232, 0.76);
+}
+
+.premium-upsell-head {
+  align-items: center;
+}
+
+.premium-info-toggle {
+  width: 36px;
+  height: 36px;
+  min-width: 36px;
+  border-radius: 999px;
+  border: 1px solid rgba(98, 222, 106, 0.24);
+  background: rgba(255, 255, 255, 0.04);
+  color: #ffffff;
+  font: inherit;
+  font-weight: 700;
+  cursor: pointer;
+  transition: transform 180ms ease, background-color 180ms ease, border-color 180ms ease;
+}
+
+.premium-info-toggle:hover,
+.premium-info-toggle:focus-visible {
+  background: rgba(98, 222, 106, 0.12);
+  border-color: rgba(98, 222, 106, 0.4);
+  transform: translateY(-1px);
+}
+
+.premium-upsell-summary {
+  display: grid;
+  gap: 6px;
+  margin-top: 8px;
+}
+
+.premium-upsell-summary strong {
+  font-size: 1.05rem;
+  letter-spacing: -0.02em;
+}
+
+.premium-info-panel {
+  margin-top: 10px;
+}
+
+.premium-feature-list-dashboard {
+  padding: 14px;
+}
+
+.premium-feature-list-dashboard div {
+  align-items: flex-start;
+}
+
+.premium-feature-list-dashboard span {
+  max-width: 26ch;
+  text-align: right;
+}
+
+.premium-upsell-actions {
+  display: flex;
+  justify-content: flex-start;
+  margin-top: 12px;
 }
 
 .plaid-connect-button {

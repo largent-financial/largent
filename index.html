@@ -33,7 +33,6 @@
       </button>
       <div class="header-dropdown" id="header-account-menu" role="menu" hidden>
         <button class="header-dropdown-item" type="button" role="menuitem" data-open-profile-view="account">Account</button>
-        <button class="header-dropdown-item" type="button" role="menuitem" data-open-profile-view="settings">Settings</button>
         <button class="header-dropdown-item" type="button" role="menuitem" data-open-profile-view="billing">Billing</button>
         <button class="header-dropdown-item" type="button" role="menuitem" data-open-profile-view="banking">Bank Connections</button>
         <button class="header-dropdown-item header-dropdown-item-danger" type="button" role="menuitem" id="header-signout-button">Sign Out</button>
@@ -426,6 +425,42 @@
         </div>
 
         <section class="dashboard-grid" aria-label="Monthly budget dashboard">
+          <article class="premium-upsell-card card" id="premium-upsell-card" hidden aria-labelledby="premium-upsell-title">
+            <div class="section-head premium-upsell-head">
+              <div>
+                <p class="eyebrow">Premium</p>
+                <h3 id="premium-upsell-title">Activate premium</h3>
+              </div>
+              <button
+                class="premium-info-toggle"
+                type="button"
+                id="premium-info-toggle"
+                aria-expanded="false"
+                aria-controls="premium-info-panel"
+                aria-label="Learn what premium includes"
+              >
+                i
+              </button>
+            </div>
+
+            <div class="premium-upsell-summary">
+              <strong>Automatic bank sync for faster tracking.</strong>
+              <span>Connect up to 2 accounts and review spending without manually logging every debit.</span>
+            </div>
+
+            <div class="premium-info-panel" id="premium-info-panel" hidden>
+              <div class="premium-feature-list premium-feature-list-dashboard">
+                <div><strong>Bank sync</strong><span>Pull in recent debit activity from connected accounts.</span></div>
+                <div><strong>Review queue</strong><span>Approve purchases and categorize them right from your dashboard.</span></div>
+                <div><strong>Less manual entry</strong><span>Use manual logging only when you want to, not because you have to.</span></div>
+              </div>
+            </div>
+
+            <div class="premium-upsell-actions">
+              <button class="button button-primary" type="button" id="premium-upsell-button">See premium</button>
+            </div>
+          </article>
+
           <article class="plaid-card card" aria-labelledby="plaid-sync-title">
             <div class="section-head plaid-head">
               <div>
