@@ -2803,8 +2803,12 @@ function updateHeaderAuthState() {
     return;
   }
 
+  const headerAuthLabel = headerAuthButton.querySelector('.header-link-label');
+
   if (currentUser?.firstName && currentUser?.lastName) {
-    headerAuthButton.textContent = `${currentUser.firstName} ${currentUser.lastName}`;
+    if (headerAuthLabel) {
+      headerAuthLabel.textContent = `${currentUser.firstName} ${currentUser.lastName}`;
+    }
     headerAuthButton.removeAttribute('data-open-auth');
     headerAuthButton.classList.add('header-link-user');
     headerAuthButton.setAttribute('aria-label', `Signed in as ${currentUser.firstName} ${currentUser.lastName}`);
@@ -2812,7 +2816,9 @@ function updateHeaderAuthState() {
     return;
   }
 
-  headerAuthButton.textContent = 'Log In';
+  if (headerAuthLabel) {
+    headerAuthLabel.textContent = 'Log In';
+  }
   headerAuthButton.setAttribute('data-open-auth', 'login');
   headerAuthButton.classList.remove('header-link-user');
   headerAuthButton.setAttribute('aria-label', 'Log In');
