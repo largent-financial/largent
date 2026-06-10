@@ -77,6 +77,8 @@ const reviewSheetFeedback = document.getElementById('review-sheet-feedback');
 const reviewSheetDismiss = document.getElementById('review-sheet-dismiss');
 const reviewSheetCancel = document.getElementById('review-sheet-cancel');
 const reviewSheetSave = document.getElementById('review-sheet-save');
+const addSpendingToggle = document.getElementById('add-spending-toggle');
+const addSpendingPanel = document.getElementById('add-spending-panel');
 const allocationDonut = document.getElementById('allocation-donut');
 const allocationDonutTotal = document.getElementById('allocation-donut-total');
 const allocationLegend = document.getElementById('allocation-legend');
@@ -142,6 +144,7 @@ let reviewState = {
   activeReviewId: null,
   selectedCategoryId: null
 };
+let addSpendingExpanded = false;
 let persistedAppState = {
   incomeProfile: null,
   monthlyBudget: null,
@@ -1745,6 +1748,23 @@ function closeReviewSheet() {
   closeModal(reviewSheetModal);
 }
 
+function setAddSpendingExpanded(expanded) {
+  addSpendingExpanded = expanded;
+  if (!addSpendingToggle || !addSpendingPanel) {
+    return;
+  }
+
+  addSpendingToggle.setAttribute('aria-expanded', String(expanded));
+  addSpendingToggle.classList.toggle('add-spending-pill-active', expanded);
+  addSpendingPanel.hidden = !expanded;
+
+  if (expanded) {
+    window.requestAnimationFrame(() => {
+      transactionAmountInput?.focus();
+    });
+  }
+}
+
 async function loadPlaidStatus({ silent = false } = {}) {
   if (!currentUser) {
     plaidState = {
@@ -2696,7 +2716,7 @@ async function handleTransactionSubmit(event) {
   transactionMemoInput.value = '';
   transactionFeedback.textContent = `${formatCurrencyPrecise(amount)} added to ${match.category.title}.`;
   renderDashboard();
-  transactionAmountInput.focus();
+  setAddSpendingExpanded(false);
   await persistDashboardSilently();
 }
 
@@ -3005,6 +3025,9 @@ authModal?.addEventListener('click', event => {
 dashboardBackButton?.addEventListener('click', () => showScreen('allocation'));
 reviewRefreshButton?.addEventListener('click', syncPlaidTransactions);
 plaidConnectButton?.addEventListener('click', startPlaidLinkFlow);
+addSpendingToggle?.addEventListener('click', () => {
+  setAddSpendingExpanded(!addSpendingExpanded);
+});
 reviewQueueList?.addEventListener('click', event => {
   const openButton = event.target.closest('[data-open-review-sheet]');
   if (openButton) {

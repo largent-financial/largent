@@ -418,7 +418,7 @@
             <div class="section-head plaid-head">
               <div>
                 <h3 id="plaid-sync-title">Bank sync</h3>
-                <p>Connect up to 2 accounts and keep Largent closer to your real spending.</p>
+                <p>2 accounts max.</p>
               </div>
               <button class="button button-primary plaid-connect-button" type="button" id="plaid-connect-button">
                 Connect bank
@@ -434,7 +434,7 @@
             <div class="section-head review-head">
               <div>
                 <h3 id="review-queue-title">Bank activity to review</h3>
-                <p>Refresh recent debits, then place each one into the right budget category.</p>
+                <p>Posted debits waiting for a category.</p>
               </div>
               <button class="button button-secondary review-refresh-button" type="button" id="review-refresh-button">
                 Refresh activity
@@ -447,42 +447,48 @@
           </article>
 
           <article class="transaction-card card" aria-labelledby="transaction-entry-title">
-            <div class="transaction-head">
-              <div>
-                <h3 id="transaction-entry-title">Add spending</h3>
-                <p>Log purchases and update your month instantly.</p>
+            <button class="add-spending-pill" type="button" id="add-spending-toggle" aria-expanded="false" aria-controls="add-spending-panel">
+              <span>+ Add spending</span>
+            </button>
+
+            <div class="add-spending-panel" id="add-spending-panel" hidden>
+              <div class="transaction-head transaction-head-compact">
+                <div>
+                  <h3 id="transaction-entry-title">Add spending</h3>
+                  <p>Quick manual entry.</p>
+                </div>
               </div>
+
+              <form class="transaction-form transaction-form-compact" id="transaction-form">
+                <div class="entry-grid entry-grid-compact">
+                  <label class="entry-field entry-field-amount" for="transaction-amount">
+                    <span class="entry-label">Amount</span>
+                    <input id="transaction-amount" name="amount" type="text" inputmode="decimal" placeholder="$42.50" autocomplete="off" />
+                  </label>
+
+                  <label class="entry-field" for="transaction-date">
+                    <span class="entry-label">Date</span>
+                    <input id="transaction-date" name="date" type="date" />
+                  </label>
+
+                  <label class="entry-field" for="transaction-category">
+                    <span class="entry-label">Category</span>
+                    <select id="transaction-category" name="category"></select>
+                  </label>
+
+                  <label class="entry-field" for="transaction-memo">
+                    <span class="entry-label">Memo</span>
+                    <input id="transaction-memo" name="memo" type="text" placeholder="What was purchased?" autocomplete="off" />
+                  </label>
+                </div>
+
+                <p class="form-feedback" id="transaction-feedback" role="status" aria-live="polite"></p>
+
+                <div class="transaction-submit-row transaction-submit-row-compact">
+                  <button class="button button-primary button-full" type="submit" id="transaction-submit">Save spending</button>
+                </div>
+              </form>
             </div>
-
-            <form class="transaction-form" id="transaction-form">
-              <label class="entry-field entry-field-amount" for="transaction-amount">
-                <span class="entry-label">Amount</span>
-                <input id="transaction-amount" name="amount" type="text" inputmode="decimal" placeholder="$42.50" autocomplete="off" />
-              </label>
-
-              <div class="entry-grid">
-                <label class="entry-field" for="transaction-date">
-                  <span class="entry-label">Date purchased</span>
-                  <input id="transaction-date" name="date" type="date" />
-                </label>
-
-                <label class="entry-field" for="transaction-category">
-                  <span class="entry-label">Category</span>
-                  <select id="transaction-category" name="category"></select>
-                </label>
-              </div>
-
-              <label class="entry-field" for="transaction-memo">
-                <span class="entry-label">Memo</span>
-                <input id="transaction-memo" name="memo" type="text" placeholder="What was purchased?" autocomplete="off" />
-              </label>
-
-              <p class="form-feedback" id="transaction-feedback" role="status" aria-live="polite"></p>
-
-              <div class="transaction-submit-row">
-                <button class="button button-primary button-full" type="submit" id="transaction-submit">Add Spending</button>
-              </div>
-            </form>
           </article>
 
           <article class="tracking-card card" aria-labelledby="tracking-groups-title">

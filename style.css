@@ -1632,24 +1632,57 @@ h3 {
   align-items: center;
 }
 
+.plaid-card,
+.review-card {
+  background: linear-gradient(180deg, #0d0f0e, #131816);
+  color: #f4fff4;
+  border-color: rgba(98, 222, 106, 0.18);
+  box-shadow:
+    0 1px 0 rgba(255, 255, 255, 0.03) inset,
+    0 14px 34px rgba(15, 17, 16, 0.28),
+    0 4px 10px rgba(15, 17, 16, 0.16);
+}
+
+.plaid-card::before,
+.review-card::before {
+  background: linear-gradient(90deg, rgba(98, 222, 106, 0.48), rgba(98, 222, 106, 0.12), transparent 72%);
+}
+
+.plaid-card h3,
+.review-card h3,
+.plaid-card strong,
+.review-card strong {
+  color: #ffffff;
+}
+
+.plaid-card p,
+.review-card p,
+.plaid-card span,
+.review-card span {
+  color: rgba(232, 243, 232, 0.76);
+}
+
 .plaid-connect-button {
-  min-width: 132px;
+  min-width: 116px;
+  min-height: 40px;
+  padding: 9px 14px;
+  border-color: rgba(98, 222, 106, 0.2);
 }
 
 .plaid-summary-row {
-  margin-top: 14px;
+  margin-top: 10px;
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 10px;
+  gap: 8px;
 }
 
 .plaid-stat,
 .plaid-account-tile,
 .plaid-empty-state {
-  padding: 12px;
+  padding: 10px 12px;
   border-radius: var(--radius-md);
-  border: 1px solid var(--border);
-  background: linear-gradient(180deg, rgba(255, 255, 255, 0.98), rgba(247, 251, 247, 0.94));
+  border: 1px solid rgba(98, 222, 106, 0.12);
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.03), rgba(98, 222, 106, 0.05));
 }
 
 .plaid-stat span,
@@ -1688,14 +1721,14 @@ h3 {
 
 .plaid-connected-list {
   display: grid;
-  gap: 10px;
+  gap: 8px;
 }
 
 .plaid-account-tile {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 12px;
+  gap: 10px;
 }
 
 .plaid-account-copy strong,
@@ -1728,14 +1761,17 @@ h3 {
 }
 
 .review-refresh-button {
-  min-width: 142px;
+  min-width: 116px;
+  min-height: 40px;
+  padding: 9px 14px;
+  border-color: rgba(98, 222, 106, 0.2);
 }
 
 .review-summary-row {
-  margin-top: 14px;
+  margin-top: 10px;
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 10px;
+  gap: 8px;
 }
 
 .review-stat,
@@ -1743,10 +1779,10 @@ h3 {
 .review-empty-state,
 .review-sheet-transaction,
 .review-category-option {
-  padding: 12px;
+  padding: 10px 12px;
   border-radius: var(--radius-md);
-  border: 1px solid var(--border);
-  background: linear-gradient(180deg, rgba(255, 255, 255, 0.98), rgba(247, 251, 247, 0.94));
+  border: 1px solid rgba(98, 222, 106, 0.12);
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.03), rgba(98, 222, 106, 0.05));
 }
 
 .review-stat span,
@@ -1789,7 +1825,7 @@ h3 {
 .review-queue-list,
 .review-sheet-category-list {
   display: grid;
-  gap: 10px;
+  gap: 8px;
 }
 
 .review-item,
@@ -1815,13 +1851,72 @@ h3 {
 }
 
 .review-item-button {
-  min-height: 40px;
-  padding: 10px 14px;
+  min-height: 36px;
+  padding: 8px 12px;
+  font-size: 0.92rem;
 }
 
 .review-empty-state {
   display: grid;
   gap: 4px;
+}
+
+.transaction-card {
+  padding: 12px;
+}
+
+.add-spending-pill {
+  width: 100%;
+  min-height: 46px;
+  border: 1px solid rgba(98, 222, 106, 0.18);
+  border-radius: 999px;
+  background: linear-gradient(180deg, rgba(98, 222, 106, 0.96), rgba(72, 201, 82, 0.96));
+  color: var(--text);
+  font-weight: 800;
+  letter-spacing: -0.02em;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 12px 22px rgba(76, 242, 53, 0.14);
+}
+
+.add-spending-pill-active {
+  box-shadow: 0 8px 16px rgba(76, 242, 53, 0.1);
+}
+
+.add-spending-panel {
+  margin-top: 12px;
+}
+
+.transaction-head-compact {
+  margin-bottom: 8px;
+}
+
+.transaction-form-compact {
+  gap: 10px;
+  margin-top: 0;
+}
+
+.entry-grid-compact {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.transaction-form-compact .entry-field input,
+.transaction-form-compact .entry-field select {
+  min-height: 46px;
+  padding: 0 12px;
+  font-size: 0.96rem;
+}
+
+.transaction-form-compact .entry-field-amount input {
+  font-size: 1.08rem;
+}
+
+.transaction-submit-row-compact {
+  position: static;
+  padding-top: 0;
+  background: transparent;
 }
 
 .modal-shell-bottom-sheet {
@@ -2589,6 +2684,10 @@ h3 {
     width: 100%;
   }
 
+  .entry-grid-compact {
+    grid-template-columns: 1fr;
+  }
+
   .plaid-account-meta {
     text-align: left;
   }
@@ -2601,6 +2700,15 @@ h3 {
   .bottom-sheet-card {
     width: 100%;
     padding: 20px 16px 18px;
+  }
+
+  .transaction-card {
+    padding: 10px;
+  }
+
+  .plaid-card,
+  .review-card {
+    padding: 12px;
   }
 
   .allocation-chart-layout {
