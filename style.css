@@ -1767,8 +1767,28 @@ h3 {
 
 .allocation-chart-layout {
   display: grid;
+  grid-template-columns: minmax(0, 170px) minmax(0, 250px) minmax(0, 1fr);
   gap: 18px;
   align-items: center;
+}
+
+.allocation-chart-total {
+  display: grid;
+  gap: 6px;
+  align-content: center;
+}
+
+.allocation-chart-total span {
+  color: var(--muted);
+  font-size: 0.78rem;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+.allocation-chart-total strong {
+  font-size: clamp(1.45rem, 2.6vw, 2rem);
+  letter-spacing: -0.04em;
+  line-height: 1;
 }
 
 .allocation-donut-wrap {
@@ -1795,30 +1815,6 @@ h3 {
   border-radius: 50%;
   background: #fff;
   box-shadow: 0 1px 0 rgba(255, 255, 255, 0.84) inset;
-}
-
-.allocation-donut-center {
-  position: absolute;
-  inset: 0;
-  display: grid;
-  place-items: center;
-  gap: 4px;
-  text-align: center;
-  z-index: 1;
-  padding: 0 16%;
-  pointer-events: none;
-}
-
-.allocation-donut-center span {
-  color: var(--muted);
-  font-size: 0.74rem;
-  text-transform: uppercase;
-  letter-spacing: 0.04em;
-}
-
-.allocation-donut-center strong {
-  font-size: 1.15rem;
-  letter-spacing: -0.03em;
 }
 
 .allocation-legend {
@@ -2313,7 +2309,14 @@ h3 {
   }
 
   .allocation-chart-layout {
+    grid-template-columns: 1fr;
     gap: 14px;
+  }
+
+  .allocation-chart-total {
+    order: -1;
+    text-align: center;
+    justify-items: center;
   }
 
   .allocation-donut {
