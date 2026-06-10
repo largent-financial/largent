@@ -12,6 +12,8 @@ const nextStepButton = document.getElementById('next-step');
 const backStepButton = document.getElementById('back-step');
 const stepNumber = document.getElementById('step-number');
 const annualSalaryInput = document.getElementById('annual-salary');
+const incomeInputLabel = document.getElementById('income-input-label');
+const stepTwoHelper = document.getElementById('step-two-helper');
 const payFrequencySelect = document.getElementById('pay-frequency');
 const stateSelect = document.getElementById('state-select');
 const filingStatusSelect = document.getElementById('filing-status');
@@ -304,6 +306,14 @@ function toCurrencyInputValue(value) {
 }
 
 function getSalaryValue() {
+  const enteredValue = parseMoney(annualSalaryInput.value);
+  if (currentMethod === 'manual') {
+    return enteredValue * 12;
+  }
+  return enteredValue;
+}
+
+function getManualMonthlyTakeHomeValue() {
   return parseMoney(annualSalaryInput.value);
 }
 
@@ -554,6 +564,35 @@ function calculateStateTax(taxableWages, state, filingStatus) {
 }
 
 function calculateResults() {
+  if (currentMethod === 'manual') {
+    const monthlyTakeHome = getManualMonthlyTakeHomeValue();
+    const annualNet = monthlyTakeHome * 12;
+
+    return {
+      annualSalary: annualNet,
+      annualPretaxDeductions: 0,
+      pretaxItems: [],
+      taxableWages: annualNet,
+      federalStandardDeduction: 0,
+      federalTaxableIncome: 0,
+      annualFederalTax: 0,
+      annualSocialSecurity: 0,
+      annualMedicare: 0,
+      annualFica: 0,
+      stateTaxableIncome: 0,
+      annualStateTax: 0,
+      annualPosttaxDeductions: 0,
+      posttaxItems: [],
+      annualNet,
+      monthlyGross: monthlyTakeHome,
+      monthlyFederalTax: 0,
+      monthlyStateTax: 0,
+      monthlyFica: 0,
+      monthlyNet: monthlyTakeHome,
+      stateNote: 'Manual take-home mode uses your entered monthly amount directly and skips tax estimation.'
+    };
+  }
+
   const annualSalary = getSalaryValue();
   const filingStatus = filingStatusSelect.value;
   const state = stateSelect.value;
@@ -1620,6 +1659,26 @@ function refreshAllDeductions() {
   });
 }
 
+function updateMethodUI() {
+  const isManual = currentMethod === 'manual';
+
+  if (incomeInputLabel) {
+    incomeInputLabel.textContent = isManual ? 'Estimated monthly income' : 'Annual salary';
+  }
+
+  if (annualSalaryInput) {
+    annualSalaryInput.placeholder = isManual ? '$4,250' : '$85,000';
+  }
+
+  if (stepTwoHelper) {
+    stepTwoHelper.textContent = isManual
+      ? 'Enter the monthly take-home amount you want to budget from.'
+      : 'We’ll use this to shape the first monthly income estimate.';
+  }
+
+  updateSummary();
+}
+
 openAuthButtons.forEach(button => {
   button.addEventListener('click', () => {
     if (!button.dataset.openAuth) {
@@ -1704,6 +1763,7 @@ methodButtons.forEach(button => {
       item.classList.toggle('option-card-active', isActive);
       item.setAttribute('aria-checked', String(isActive));
     });
+    updateMethodUI();
   });
 });
 
@@ -1817,5 +1877,6 @@ setDeductionTaxTreatment('roth', 'posttax');
 setDeductionTaxTreatment('hsa', 'pretax');
 setDeductionTaxTreatment('extra-withholding', 'posttax');
 deductionKinds.forEach(deduction => setDeductionMode(deduction, 'yearly'));
+updateMethodUI();
 updateFlowStep();
 updateSummary();
