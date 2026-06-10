@@ -467,6 +467,7 @@ def create_app() -> Flask:
         if not month_label:
             return jsonify({"message": "Month label is required."}), 400
 
+        profile = get_current_income_profile(user)
         budget_month = month_start_from_label(month_label)
         budget = (
             db.session.execute(
@@ -477,17 +478,26 @@ def create_app() -> Flask:
         )
 
         if not budget:
-            budget = MonthlyBudget(user_id=user.id, budget_month=budget_month)
+            budget = MonthlyBudget(
+                user_id=user.id,
+                budget_month=budget_month,
+                income_profile_id=profile.id if profile else None,
+                month_label=month_label,
+                net_monthly_income_cents=cents_from_amount(payload.get("monthlyIncome")),
+                allocated_total_cents=cents_from_amount(payload.get("allocatedTotal")),
+                remaining_to_allocate_cents=cents_from_amount(payload.get("remainingToAllocate")),
+                status=BudgetStatus.FINALIZED,
+                finalized_at=datetime.utcnow(),
+            )
             db.session.add(budget)
-
-        profile = get_current_income_profile(user)
-        budget.income_profile_id = profile.id if profile else None
-        budget.month_label = month_label
-        budget.net_monthly_income_cents = cents_from_amount(payload.get("monthlyIncome"))
-        budget.allocated_total_cents = cents_from_amount(payload.get("allocatedTotal"))
-        budget.remaining_to_allocate_cents = cents_from_amount(payload.get("remainingToAllocate"))
-        budget.status = BudgetStatus.FINALIZED
-        budget.finalized_at = datetime.utcnow()
+        else:
+            budget.income_profile_id = profile.id if profile else None
+            budget.month_label = month_label
+            budget.net_monthly_income_cents = cents_from_amount(payload.get("monthlyIncome"))
+            budget.allocated_total_cents = cents_from_amount(payload.get("allocatedTotal"))
+            budget.remaining_to_allocate_cents = cents_from_amount(payload.get("remainingToAllocate"))
+            budget.status = BudgetStatus.FINALIZED
+            budget.finalized_at = datetime.utcnow()
 
         for transaction in list(budget.transactions):
             db.session.delete(transaction)
