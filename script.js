@@ -86,9 +86,9 @@ let allocationState = null;
 let dashboardState = null;
 let selectedDashboardCategoryId = null;
 let currentUser = null;
+let authRequestInFlight = false;
 
 const chartPalette = ['#62de6a', '#35bc40', '#1f7a2b', '#a7eaad', '#f5cd47', '#85c5ff', '#ef8b65', '#b6ebb9'];
-const USERS_STORAGE_KEY = 'largent-users';
 const CURRENT_USER_STORAGE_KEY = 'largent-current-user';
 
 const defaultAllocationSections = [
@@ -1374,20 +1374,6 @@ function closeModal(modal) {
   }, 220);
 }
 
-function getStoredUsers() {
-  try {
-    const raw = window.localStorage.getItem(USERS_STORAGE_KEY);
-    const parsed = raw ? JSON.parse(raw) : [];
-    return Array.isArray(parsed) ? parsed : [];
-  } catch {
-    return [];
-  }
-}
-
-function saveStoredUsers(users) {
-  window.localStorage.setItem(USERS_STORAGE_KEY, JSON.stringify(users));
-}
-
 function saveCurrentUser(user) {
   currentUser = user;
   if (user) {
@@ -1398,7 +1384,36 @@ function saveCurrentUser(user) {
   updateHeaderAuthState();
 }
 
-function loadCurrentUser() {
+async function apiRequest(path, options = {}) {
+  const response = await fetch(path, {
+    method: options.method || 'GET',
+    headers: {
+      ...(options.body ? { 'Content-Type': 'application/json' } : {}),
+      ...(options.headers || {})
+    },
+    body: options.body ? JSON.stringify(options.body) : undefined,
+    credentials: 'same-origin'
+  });
+
+  let payload = {};
+
+  try {
+    payload = await response.json();
+  } catch {
+    payload = {};
+  }
+
+  if (!response.ok) {
+    const error = new Error(payload.message || 'Something went wrong.');
+    error.status = response.status;
+    error.payload = payload;
+    throw error;
+  }
+
+  return payload;
+}
+
+async function loadCurrentUser() {
   try {
     const raw = window.localStorage.getItem(CURRENT_USER_STORAGE_KEY);
     currentUser = raw ? JSON.parse(raw) : null;
@@ -1406,6 +1421,28 @@ function loadCurrentUser() {
     currentUser = null;
   }
   updateHeaderAuthState();
+
+  try {
+    const payload = await apiRequest('/api/auth/me');
+    saveCurrentUser(payload.user || null);
+  } catch {
+    saveCurrentUser(null);
+  }
+}
+
+function setAuthFormLoading(form, isLoading) {
+  const submitButton = form?.querySelector('[type="submit"]');
+  if (submitButton) {
+    submitButton.disabled = isLoading;
+    submitButton.textContent = isLoading
+      ? (form.dataset.form === 'signup' ? 'Creating Account...' : 'Signing In...')
+      : (form.dataset.form === 'signup' ? 'Create Account' : 'Continue');
+  }
+
+  const forgotButton = form?.querySelector('#auth-forgot-password');
+  if (forgotButton) {
+    forgotButton.disabled = isLoading;
+  }
 }
 
 function updateHeaderAuthState() {
@@ -1416,12 +1453,14 @@ function updateHeaderAuthState() {
   if (currentUser?.firstName && currentUser?.lastName) {
     headerAuthButton.textContent = `${currentUser.firstName} ${currentUser.lastName}`;
     headerAuthButton.removeAttribute('data-open-auth');
+    headerAuthButton.classList.add('header-link-user');
     headerAuthButton.setAttribute('aria-label', `Signed in as ${currentUser.firstName} ${currentUser.lastName}`);
     return;
   }
 
   headerAuthButton.textContent = 'Log In';
   headerAuthButton.setAttribute('data-open-auth', 'login');
+  headerAuthButton.classList.remove('header-link-user');
   headerAuthButton.setAttribute('aria-label', 'Log In');
 }
 
@@ -1442,7 +1481,7 @@ function clearAuthFeedback() {
   setAuthFeedback(authLoginFeedback, '');
 }
 
-function handleSignupSubmit(form) {
+async function handleSignupSubmit(form) {
   const firstName = form.elements.firstName.value.trim();
   const lastName = form.elements.lastName.value.trim();
   const email = form.elements.email.value.trim().toLowerCase();
@@ -1459,35 +1498,39 @@ function handleSignupSubmit(form) {
     return false;
   }
 
-  const users = getStoredUsers();
-  if (users.some(user => user.email === email)) {
-    setAuthFeedback(authSignupFeedback, 'An account with that email already exists. Please log in.', 'error');
-    setAuthMode('login');
+  try {
+    const payload = await apiRequest('/api/auth/signup', {
+      method: 'POST',
+      body: { firstName, lastName, email, password, confirmPassword }
+    });
+    saveCurrentUser(payload.user);
+    setAuthFeedback(authSignupFeedback, payload.message || 'Account created successfully.', 'success');
+    return true;
+  } catch (error) {
+    setAuthFeedback(authSignupFeedback, error.message, 'error');
+    if (error.status === 409) {
+      setAuthMode('login');
+    }
     return false;
   }
-
-  const user = { firstName, lastName, email, password };
-  users.push(user);
-  saveStoredUsers(users);
-  saveCurrentUser({ firstName, lastName, email });
-  setAuthFeedback(authSignupFeedback, 'Account created successfully.', 'success');
-  return true;
 }
 
-function handleLoginSubmit(form) {
+async function handleLoginSubmit(form) {
   const email = form.elements.email.value.trim().toLowerCase();
   const password = form.elements.password.value;
-  const users = getStoredUsers();
-  const match = users.find(user => user.email === email && user.password === password);
 
-  if (!match) {
-    setAuthFeedback(authLoginFeedback, 'We could not find a matching email and password.', 'error');
+  try {
+    const payload = await apiRequest('/api/auth/login', {
+      method: 'POST',
+      body: { email, password }
+    });
+    saveCurrentUser(payload.user);
+    setAuthFeedback(authLoginFeedback, payload.message || 'Logged in successfully.', 'success');
+    return true;
+  } catch (error) {
+    setAuthFeedback(authLoginFeedback, error.message, 'error');
     return false;
   }
-
-  saveCurrentUser({ firstName: match.firstName, lastName: match.lastName, email: match.email });
-  setAuthFeedback(authLoginFeedback, 'Logged in successfully.', 'success');
-  return true;
 }
 
 function getTodayDateValue() {
@@ -1569,6 +1612,9 @@ function refreshAllDeductions() {
 
 openAuthButtons.forEach(button => {
   button.addEventListener('click', () => {
+    if (!button.dataset.openAuth) {
+      return;
+    }
     setAuthMode(button.dataset.openAuth);
     openModal(authModal);
   });
@@ -1579,22 +1625,49 @@ authToggles.forEach(toggle => {
 });
 
 authForms.forEach(form => {
-  form.addEventListener('submit', event => {
+  form.addEventListener('submit', async event => {
     event.preventDefault();
-    const isSignup = form.dataset.form === 'signup';
-    const isValid = isSignup ? handleSignupSubmit(form) : handleLoginSubmit(form);
-    if (!isValid) {
+    if (authRequestInFlight) {
       return;
     }
-    closeModal(authModal);
-    showScreen('step-a');
-    currentStep = 1;
-    updateFlowStep();
+    const isSignup = form.dataset.form === 'signup';
+    authRequestInFlight = true;
+    setAuthFormLoading(form, true);
+
+    try {
+      const isValid = isSignup ? await handleSignupSubmit(form) : await handleLoginSubmit(form);
+      if (!isValid) {
+        return;
+      }
+      closeModal(authModal);
+      showScreen('step-a');
+      currentStep = 1;
+      updateFlowStep();
+    } finally {
+      authRequestInFlight = false;
+      setAuthFormLoading(form, false);
+    }
   });
 });
 
-authForgotPasswordButton?.addEventListener('click', () => {
-  setAuthFeedback(authLoginFeedback, 'Password recovery will be connected in the backend/email phase.', 'success');
+authForgotPasswordButton?.addEventListener('click', async () => {
+  const loginForm = authForgotPasswordButton.closest('form');
+  const email = loginForm?.elements.email?.value.trim().toLowerCase();
+
+  if (!email) {
+    setAuthFeedback(authLoginFeedback, 'Enter your email first, then tap forgot password.', 'error');
+    return;
+  }
+
+  try {
+    const payload = await apiRequest('/api/auth/forgot-password', {
+      method: 'POST',
+      body: { email }
+    });
+    setAuthFeedback(authLoginFeedback, payload.message, 'success');
+  } catch (error) {
+    setAuthFeedback(authLoginFeedback, error.message, 'error');
+  }
 });
 
 methodButtons.forEach(button => {

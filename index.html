@@ -516,24 +516,24 @@
           <div class="field-grid">
             <label class="field">
               <span>First name</span>
-              <input type="text" name="firstName" placeholder="Jamie" required />
+              <input type="text" name="firstName" placeholder="Jamie" autocomplete="given-name" required />
             </label>
             <label class="field">
               <span>Last name</span>
-              <input type="text" name="lastName" placeholder="Smith" required />
+              <input type="text" name="lastName" placeholder="Smith" autocomplete="family-name" required />
             </label>
           </div>
           <label class="field">
             <span>Email</span>
-            <input type="email" name="email" placeholder="jamie@example.com" required />
+            <input type="email" name="email" placeholder="jamie@example.com" autocomplete="email" required />
           </label>
           <label class="field">
             <span>Password</span>
-            <input type="password" name="password" placeholder="Create a password" required />
+            <input type="password" name="password" placeholder="Create a password" autocomplete="new-password" required />
           </label>
           <label class="field">
             <span>Confirm password</span>
-            <input type="password" name="confirmPassword" placeholder="Confirm your password" required />
+            <input type="password" name="confirmPassword" placeholder="Confirm your password" autocomplete="new-password" required />
           </label>
           <p class="auth-feedback" id="auth-signup-feedback" role="status" aria-live="polite"></p>
           <button class="button button-primary button-full" type="submit">Create Account</button>
@@ -542,11 +542,11 @@
         <form class="auth-form" data-form="login">
           <label class="field">
             <span>Email</span>
-            <input type="email" name="email" placeholder="jamie@example.com" required />
+            <input type="email" name="email" placeholder="jamie@example.com" autocomplete="email" required />
           </label>
           <label class="field">
             <span>Password</span>
-            <input type="password" name="password" placeholder="Enter your password" required />
+            <input type="password" name="password" placeholder="Enter your password" autocomplete="current-password" required />
           </label>
           <p class="auth-feedback" id="auth-login-feedback" role="status" aria-live="polite"></p>
           <div class="auth-form-actions">

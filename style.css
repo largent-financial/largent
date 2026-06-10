@@ -127,6 +127,17 @@ a {
   color: var(--primary-deep);
 }
 
+.header-link-user {
+  cursor: default;
+  font-weight: 700;
+}
+
+.header-link-user:hover,
+.header-link-user:focus-visible {
+  transform: none;
+  color: var(--text);
+}
+
 .app-shell {
   padding: 20px;
 }
