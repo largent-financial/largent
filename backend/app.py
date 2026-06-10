@@ -1,12 +1,18 @@
 from pathlib import Path
 
+import base64
 import click
+from cryptography.fernet import Fernet
 from datetime import datetime
 from email.message import EmailMessage
+import hashlib
+import json
 import secrets
 import smtplib
 import ssl
 import string
+from urllib import error as urlerror
+from urllib import request as urlrequest
 from uuid import UUID
 
 from flask import Flask, jsonify, request, send_from_directory, session
@@ -235,6 +241,23 @@ def create_app() -> Flask:
         db.session.commit()
         click.echo("Banking and billing schema synced.")
 
+    @app.cli.command("grant-premium")
+    @click.option("--email", required=True, help="User email to grant premium access to.")
+    def grant_premium_command(email: str):
+        normalized_email = email.strip().lower()
+        user = db.session.execute(db.select(User).filter_by(email=normalized_email)).scalar_one_or_none()
+        if not user:
+            click.echo("User not found.")
+            return
+
+        entitlement = get_user_entitlement(user, create_if_missing=True)
+        entitlement.premium_access = True
+        entitlement.bank_sync_enabled = True
+        entitlement.max_linked_accounts = 2
+        entitlement.source = "manual"
+        db.session.commit()
+        click.echo(f"Premium access granted to {normalized_email}.")
+
     def serialize_user(user: User):
         return {
             "id": str(user.id),
@@ -311,6 +334,86 @@ def create_app() -> Flask:
 
     def amount_from_cents(value) -> float:
         return round((value or 0) / 100, 2)
+
+    def get_plaid_base_url() -> str:
+        env = (app.config.get("PLAID_ENV") or "sandbox").lower()
+        env_map = {
+            "sandbox": "https://sandbox.plaid.com",
+            "development": "https://development.plaid.com",
+            "production": "https://production.plaid.com",
+        }
+        return env_map.get(env, env_map["sandbox"])
+
+    def get_plaid_products() -> list[str]:
+        raw_products = app.config.get("PLAID_PRODUCTS") or "transactions"
+        return [product.strip() for product in raw_products.split(",") if product.strip()]
+
+    def get_plaid_country_codes() -> list[str]:
+        raw_codes = app.config.get("PLAID_COUNTRY_CODES") or "US"
+        return [code.strip().upper() for code in raw_codes.split(",") if code.strip()]
+
+    def get_plaid_webhook_url() -> str | None:
+        configured = app.config.get("PLAID_WEBHOOK_URL")
+        if configured:
+            return configured
+
+        app_base_url = (app.config.get("APP_BASE_URL") or "").rstrip("/")
+        if app_base_url.startswith("http://") or app_base_url.startswith("https://"):
+            return f"{app_base_url}/api/plaid/webhooks"
+        return None
+
+    def get_plaid_fernet() -> Fernet:
+        configured_key = app.config.get("PLAID_TOKEN_ENCRYPTION_KEY")
+        if configured_key:
+            return Fernet(configured_key.encode("utf-8"))
+
+        secret_key = app.config.get("SECRET_KEY") or "dev-secret-key"
+        derived_key = base64.urlsafe_b64encode(hashlib.sha256(secret_key.encode("utf-8")).digest())
+        return Fernet(derived_key)
+
+    def encrypt_plaid_access_token(access_token: str) -> str:
+        return get_plaid_fernet().encrypt(access_token.encode("utf-8")).decode("utf-8")
+
+    def decrypt_plaid_access_token(encrypted_access_token: str) -> str:
+        return get_plaid_fernet().decrypt(encrypted_access_token.encode("utf-8")).decode("utf-8")
+
+    def plaid_api_request(path: str, payload: dict) -> dict:
+        client_id = app.config.get("PLAID_CLIENT_ID")
+        secret = app.config.get("PLAID_SECRET")
+        if not client_id or not secret:
+            raise RuntimeError("Plaid credentials are not configured.")
+
+        request_body = {
+            **payload,
+            "client_id": client_id,
+            "secret": secret,
+        }
+        request_data = json.dumps(request_body).encode("utf-8")
+        request_url = f"{get_plaid_base_url()}{path}"
+        plaid_request = urlrequest.Request(
+            request_url,
+            data=request_data,
+            headers={"Content-Type": "application/json"},
+            method="POST",
+        )
+
+        try:
+            with urlrequest.urlopen(plaid_request, timeout=30) as response:
+                return json.loads(response.read().decode("utf-8"))
+        except urlerror.HTTPError as error:
+            error_payload = error.read().decode("utf-8") if error.fp else ""
+            try:
+                parsed_payload = json.loads(error_payload) if error_payload else {}
+            except json.JSONDecodeError:
+                parsed_payload = {}
+            message = parsed_payload.get("error_message") or parsed_payload.get("display_message") or "Plaid request failed."
+            raise ValueError(message) from error
+
+    def ensure_bank_sync_access(user: User):
+        entitlement = get_user_entitlement(user, create_if_missing=True)
+        if not entitlement.premium_access or not entitlement.bank_sync_enabled:
+            raise PermissionError("Bank sync is available with Largent Premium.")
+        return entitlement
 
     def month_start_from_label(month_label: str):
         return datetime.strptime(month_label, "%B %Y").date().replace(day=1)
@@ -583,6 +686,205 @@ def create_app() -> Flask:
                 "items": [serialize_plaid_item(item) for item in items],
             }
         )
+
+    @app.post("/api/plaid/link-token")
+    def create_plaid_link_token():
+        user = get_current_user()
+        if not user:
+            return jsonify({"message": "You must be logged in to connect a bank account."}), 401
+
+        try:
+            entitlement = ensure_bank_sync_access(user)
+        except PermissionError as error:
+            db.session.commit()
+            return jsonify({"message": str(error)}), 403
+
+        active_accounts_count = get_active_plaid_accounts_count(user)
+        if active_accounts_count >= entitlement.max_linked_accounts:
+            db.session.commit()
+            return jsonify({"message": "You have already reached your 2 connected account limit."}), 403
+
+        webhook_url = get_plaid_webhook_url()
+        plaid_payload = {
+            "client_name": "Largent",
+            "country_codes": get_plaid_country_codes(),
+            "language": "en",
+            "products": get_plaid_products(),
+            "user": {"client_user_id": str(user.id)},
+        }
+        if webhook_url:
+            plaid_payload["webhook"] = webhook_url
+
+        try:
+            plaid_response = plaid_api_request("/link/token/create", plaid_payload)
+        except ValueError as error:
+            db.session.rollback()
+            return jsonify({"message": str(error)}), 502
+
+        db.session.commit()
+        return jsonify(
+            {
+                "linkToken": plaid_response.get("link_token"),
+                "expiration": plaid_response.get("expiration"),
+                "requestId": plaid_response.get("request_id"),
+            }
+        )
+
+    @app.post("/api/plaid/exchange-public-token")
+    def exchange_plaid_public_token():
+        user = get_current_user()
+        if not user:
+            return jsonify({"message": "You must be logged in to connect a bank account."}), 401
+
+        payload = request.get_json(silent=True) or {}
+        public_token = payload.get("publicToken")
+        metadata = payload.get("metadata") or {}
+        if not public_token:
+            return jsonify({"message": "Plaid public token is required."}), 400
+
+        try:
+            entitlement = ensure_bank_sync_access(user)
+        except PermissionError as error:
+            db.session.commit()
+            return jsonify({"message": str(error)}), 403
+
+        active_accounts_count = get_active_plaid_accounts_count(user)
+        if active_accounts_count >= entitlement.max_linked_accounts:
+            db.session.commit()
+            return jsonify({"message": "You have already reached your 2 connected account limit."}), 403
+
+        try:
+            exchange_response = plaid_api_request("/item/public_token/exchange", {"public_token": public_token})
+            access_token = exchange_response["access_token"]
+            plaid_item_id = exchange_response["item_id"]
+            accounts_response = plaid_api_request("/accounts/get", {"access_token": access_token})
+        except ValueError as error:
+            db.session.rollback()
+            return jsonify({"message": str(error)}), 502
+
+        accounts = accounts_response.get("accounts") or []
+        selected_account_ids = {
+            account.get("id")
+            for account in (metadata.get("accounts") or [])
+            if account.get("id")
+        }
+        if selected_account_ids:
+            accounts = [account for account in accounts if account.get("account_id") in selected_account_ids]
+        remaining_slots = max(0, entitlement.max_linked_accounts - active_accounts_count)
+        if len(accounts) > remaining_slots:
+            try:
+                plaid_api_request("/item/remove", {"access_token": access_token})
+            except Exception:
+                pass
+            db.session.rollback()
+            return jsonify({"message": f"You can connect up to {entitlement.max_linked_accounts} bank accounts on Premium."}), 400
+
+        institution = metadata.get("institution") or {}
+        existing_item = db.session.execute(db.select(PlaidItem).filter_by(plaid_item_id=plaid_item_id)).scalar_one_or_none()
+        if existing_item and existing_item.user_id != user.id:
+            try:
+                plaid_api_request("/item/remove", {"access_token": access_token})
+            except Exception:
+                pass
+            db.session.rollback()
+            return jsonify({"message": "This bank connection is already linked to another user."}), 409
+
+        if existing_item:
+            plaid_item = existing_item
+            plaid_item.plaid_access_token_encrypted = encrypt_plaid_access_token(access_token)
+            plaid_item.institution_id = institution.get("institution_id") or plaid_item.institution_id
+            plaid_item.institution_name = institution.get("name") or plaid_item.institution_name
+            plaid_item.status = "active"
+            plaid_item.error_code = None
+            plaid_item.error_message = None
+            plaid_item.disconnected_at = None
+            plaid_item.last_synced_at = datetime.utcnow()
+        else:
+            plaid_item = PlaidItem(
+                user_id=user.id,
+                plaid_item_id=plaid_item_id,
+                plaid_access_token_encrypted=encrypt_plaid_access_token(access_token),
+                institution_id=institution.get("institution_id"),
+                institution_name=institution.get("name"),
+                status="active",
+                last_synced_at=datetime.utcnow(),
+            )
+            db.session.add(plaid_item)
+            db.session.flush()
+
+        for account_payload in accounts:
+            existing_account = db.session.execute(
+                db.select(PlaidAccount).filter_by(plaid_account_id=account_payload["account_id"])
+            ).scalar_one_or_none()
+
+            if existing_account:
+                existing_account.user_id = user.id
+                existing_account.plaid_item_row_id = plaid_item.id
+                existing_account.persistent_account_id = account_payload.get("persistent_account_id")
+                existing_account.name = account_payload.get("name") or existing_account.name
+                existing_account.official_name = account_payload.get("official_name")
+                existing_account.mask = account_payload.get("mask")
+                existing_account.type = account_payload.get("type") or existing_account.type
+                existing_account.subtype = account_payload.get("subtype")
+                existing_account.is_active = True
+                existing_account.last_synced_at = datetime.utcnow()
+                continue
+
+            db.session.add(
+                PlaidAccount(
+                    user_id=user.id,
+                    plaid_item_row_id=plaid_item.id,
+                    plaid_account_id=account_payload["account_id"],
+                    persistent_account_id=account_payload.get("persistent_account_id"),
+                    name=account_payload.get("name") or "Connected account",
+                    official_name=account_payload.get("official_name"),
+                    mask=account_payload.get("mask"),
+                    type=account_payload.get("type") or "unknown",
+                    subtype=account_payload.get("subtype"),
+                    is_active=True,
+                    last_synced_at=datetime.utcnow(),
+                )
+            )
+
+        db.session.commit()
+        db.session.refresh(plaid_item)
+
+        return jsonify(
+            {
+                "message": "Bank account connected successfully.",
+                "item": serialize_plaid_item(plaid_item),
+                "summary": {
+                    "activeConnectedAccounts": get_active_plaid_accounts_count(user),
+                    "maxLinkedAccounts": entitlement.max_linked_accounts,
+                },
+            }
+        )
+
+    @app.post("/api/plaid/webhooks")
+    def plaid_webhooks():
+        payload = request.get_json(silent=True) or {}
+        plaid_item_id = payload.get("item_id")
+        item = None
+        user_id = None
+        if plaid_item_id:
+            item = db.session.execute(db.select(PlaidItem).filter_by(plaid_item_id=plaid_item_id)).scalar_one_or_none()
+            if item:
+                item.last_webhook_at = datetime.utcnow()
+                user_id = item.user_id
+
+        db.session.add(
+            PlaidWebhookEvent(
+                user_id=user_id,
+                plaid_item_row_id=item.id if item else None,
+                plaid_event_id=payload.get("webhook_id") or payload.get("request_id"),
+                webhook_type=payload.get("webhook_type") or "unknown",
+                webhook_code=payload.get("webhook_code") or "unknown",
+                payload=payload,
+                processed_at=datetime.utcnow(),
+            )
+        )
+        db.session.commit()
+        return jsonify({"status": "ok"})
 
     def is_strong_password(password: str) -> bool:
         return len(password) >= 8 and any(character.isdigit() for character in password) and any(
