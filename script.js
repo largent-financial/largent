@@ -3,6 +3,26 @@ const authToggles = [...document.querySelectorAll('[data-auth-mode]')];
 const authForms = [...document.querySelectorAll('.auth-form')];
 const openAuthButtons = [...document.querySelectorAll('[data-open-auth]')];
 const headerAuthButton = document.getElementById('header-auth-button');
+const headerAccountMenu = document.getElementById('header-account-menu');
+const headerSignoutButton = document.getElementById('header-signout-button');
+const profileModal = document.getElementById('profile-modal');
+const profileModalCloseButton = document.getElementById('profile-modal-close');
+const profileNavButtons = [...document.querySelectorAll('[data-profile-nav]')];
+const profilePanels = [...document.querySelectorAll('[data-profile-panel]')];
+const profileAccountForm = document.getElementById('profile-account-form');
+const profileAccountFeedback = document.getElementById('profile-account-feedback');
+const profileAccountSaveButton = document.getElementById('profile-account-save-button');
+const profileResetPasswordButton = document.getElementById('profile-reset-password-button');
+const profileSettingsFeedback = document.getElementById('profile-settings-feedback');
+const profileBillingSummary = document.getElementById('profile-billing-summary');
+const profileBillingFeedback = document.getElementById('profile-billing-feedback');
+const profileUpgradeButton = document.getElementById('profile-upgrade-button');
+const profileManagePremiumButton = document.getElementById('profile-manage-premium-button');
+const profileBankSummary = document.getElementById('profile-bank-summary');
+const profileBankList = document.getElementById('profile-bank-list');
+const profileBankingFeedback = document.getElementById('profile-banking-feedback');
+const profileOpenDashboardButton = document.getElementById('profile-open-dashboard-button');
+const profileConnectBankButton = document.getElementById('profile-connect-bank-button');
 const flowSteps = [...document.querySelectorAll('.flow-step')];
 const stepIndicators = [...document.querySelectorAll('.step-item')];
 const methodButtons = [...document.querySelectorAll('[data-method]')];
@@ -152,6 +172,12 @@ let plaidDisconnectState = {
   accountName: '',
   saving: false
 };
+let profileView = 'account';
+let profileState = {
+  loading: false,
+  savingAccount: false,
+  premium: null
+};
 let addSpendingExpanded = false;
 let persistedAppState = {
   incomeProfile: null,
@@ -160,6 +186,14 @@ let persistedAppState = {
 };
 
 const CURRENT_USER_STORAGE_KEY = 'largent-current-user';
+const USER_SETTINGS_STORAGE_KEY = 'largent-user-settings';
+const defaultUserSettings = {
+  monthlySummaryEmail: true,
+  securityEmails: true,
+  reduceMotion: false,
+  openDashboardFirst: true
+};
+let userSettings = { ...defaultUserSettings };
 
 const defaultAllocationSections = [
   {
@@ -1535,6 +1569,7 @@ function renderPlaidSection() {
         <span>When you connect one, your linked accounts will show up here.</span>
       </div>
     `;
+    renderProfileBankingPanel();
     return;
   }
 
@@ -1554,6 +1589,7 @@ function renderPlaidSection() {
       </article>
     `)
     .join('');
+  renderProfileBankingPanel();
 }
 
 function findPlaidAccountById(accountId) {
@@ -2223,6 +2259,211 @@ function closeModal(modal) {
   }, 220);
 }
 
+function loadUserSettings() {
+  try {
+    const raw = window.localStorage.getItem(USER_SETTINGS_STORAGE_KEY);
+    userSettings = raw ? { ...defaultUserSettings, ...JSON.parse(raw) } : { ...defaultUserSettings };
+  } catch {
+    userSettings = { ...defaultUserSettings };
+  }
+  applyUserSettings();
+}
+
+function saveUserSettings() {
+  window.localStorage.setItem(USER_SETTINGS_STORAGE_KEY, JSON.stringify(userSettings));
+  applyUserSettings();
+}
+
+function applyUserSettings() {
+  document.documentElement.dataset.reduceMotion = userSettings.reduceMotion ? 'true' : 'false';
+}
+
+function closeHeaderMenu() {
+  if (!headerAccountMenu || !headerAuthButton) {
+    return;
+  }
+  headerAccountMenu.hidden = true;
+  headerAuthButton.setAttribute('aria-expanded', 'false');
+}
+
+function openHeaderMenu() {
+  if (!headerAccountMenu || !headerAuthButton || !currentUser) {
+    return;
+  }
+  headerAccountMenu.hidden = false;
+  headerAuthButton.setAttribute('aria-expanded', 'true');
+}
+
+function toggleHeaderMenu() {
+  if (!currentUser) {
+    return;
+  }
+  if (headerAccountMenu?.hidden) {
+    openHeaderMenu();
+  } else {
+    closeHeaderMenu();
+  }
+}
+
+async function loadPremiumStatus() {
+  if (!currentUser) {
+    profileState.premium = null;
+    return null;
+  }
+
+  const payload = await apiRequest('/api/premium/status');
+  profileState.premium = payload;
+  return payload;
+}
+
+function setProfileFeedback(target, message = '', type = '') {
+  if (!target) {
+    return;
+  }
+  target.textContent = message;
+  target.classList.remove('auth-feedback-error', 'auth-feedback-success');
+  if (type) {
+    target.classList.add(`auth-feedback-${type}`);
+  }
+}
+
+function renderProfileAccountPanel() {
+  if (!profileAccountForm || !currentUser) {
+    return;
+  }
+
+  profileAccountForm.elements.firstName.value = currentUser.firstName || '';
+  profileAccountForm.elements.lastName.value = currentUser.lastName || '';
+  profileAccountForm.elements.email.value = currentUser.email || '';
+}
+
+function renderProfileSettingsPanel() {
+  document.querySelectorAll('[data-setting-toggle]').forEach(input => {
+    input.checked = Boolean(userSettings[input.dataset.settingToggle]);
+  });
+}
+
+function renderProfileBillingPanel() {
+  if (!profileBillingSummary) {
+    return;
+  }
+
+  const entitlement = profileState.premium?.entitlement;
+  const subscription = profileState.premium?.subscription;
+  const premiumActive = Boolean(entitlement?.premiumAccess);
+  const planLabel = premiumActive ? 'Premium' : 'Free';
+  const sourceLabel = subscription?.status ? subscription.status : premiumActive ? 'Manual access' : 'No active premium plan';
+
+  profileBillingSummary.innerHTML = `
+    <div class="premium-summary-card">
+      <span class="premium-label">Current plan</span>
+      <strong>${planLabel}</strong>
+      <p>${sourceLabel}</p>
+    </div>
+    <div class="premium-feature-list">
+      <div><strong>Bank sync</strong><span>${entitlement?.bankSyncEnabled ? 'Enabled' : 'Locked on free plan'}</span></div>
+      <div><strong>Connected accounts</strong><span>Up to ${entitlement?.maxLinkedAccounts ?? 2}</span></div>
+    </div>
+  `;
+}
+
+function renderProfileBankingPanel() {
+  if (!profileBankSummary || !profileBankList) {
+    return;
+  }
+
+  const summary = plaidState.summary;
+  const accounts = flattenPlaidAccounts(plaidState.items);
+  const activeConnected = summary?.activeConnectedAccounts ?? accounts.length;
+  const maxLinked = summary?.maxLinkedAccounts ?? 2;
+  const premiumRequired = summary ? Boolean(summary.premiumRequired) : false;
+
+  profileBankSummary.innerHTML = `
+    <div class="profile-bank-summary-row">
+      <strong>${activeConnected} of ${maxLinked} connected</strong>
+      <span>${premiumRequired ? 'Premium required to add more bank accounts.' : 'Use Change to swap any connected account.'}</span>
+    </div>
+  `;
+
+  if (profileConnectBankButton) {
+    profileConnectBankButton.disabled = premiumRequired || activeConnected >= maxLinked;
+    profileConnectBankButton.textContent = premiumRequired ? 'Premium required' : activeConnected >= maxLinked ? 'Accounts full' : 'Connect bank';
+  }
+  if (profileOpenDashboardButton) {
+    profileOpenDashboardButton.disabled = !dashboardState;
+  }
+
+  if (!accounts.length) {
+    profileBankList.innerHTML = `
+      <div class="plaid-empty-state">
+        <strong>No bank accounts connected yet.</strong>
+        <span>Connect one from here or from the dashboard when you’re ready.</span>
+      </div>
+    `;
+    return;
+  }
+
+  profileBankList.innerHTML = accounts
+    .map(account => `
+      <article class="plaid-account-tile profile-bank-tile">
+        <div class="plaid-account-copy">
+          <strong>${account.name || account.officialName || 'Connected account'}</strong>
+          <span>${account.institutionName}${account.mask ? ` •••• ${account.mask}` : ''}</span>
+        </div>
+        <div class="plaid-account-meta">
+          <span>${account.subtype || account.type || 'Account'}</span>
+          <button class="plaid-account-remove" type="button" data-disconnect-plaid-account="${account.id}" aria-label="Disconnect ${account.name || account.officialName || 'connected account'}">
+            Change
+          </button>
+        </div>
+      </article>
+    `)
+    .join('');
+}
+
+function setProfileView(nextView) {
+  profileView = nextView;
+  profileNavButtons.forEach(button => {
+    const isActive = button.dataset.profileNav === nextView;
+    button.classList.toggle('profile-nav-item-active', isActive);
+  });
+  profilePanels.forEach(panel => {
+    panel.classList.toggle('profile-panel-active', panel.dataset.profilePanel === nextView);
+  });
+}
+
+async function openProfileModal(nextView = 'account') {
+  if (!currentUser) {
+    return;
+  }
+
+  closeHeaderMenu();
+  profileState.loading = true;
+  setProfileFeedback(profileBillingFeedback, '');
+  setProfileFeedback(profileAccountFeedback, '');
+  setProfileFeedback(profileSettingsFeedback, '');
+  setProfileFeedback(profileBankingFeedback, '');
+  renderProfileAccountPanel();
+  renderProfileSettingsPanel();
+  renderProfileBankingPanel();
+  openModal(profileModal);
+  setProfileView(nextView);
+
+  try {
+    await loadPremiumStatus();
+    renderProfileBillingPanel();
+    renderProfileBankingPanel();
+  } catch (error) {
+    setProfileFeedback(profileBillingFeedback, error.message || 'We could not load your billing details.', 'error');
+  } finally {
+    profileState.loading = false;
+  }
+}
+
+function closeProfileModal() {
+  closeModal(profileModal);
+}
+
 function saveCurrentUser(user) {
   currentUser = user;
   if (user) {
@@ -2380,7 +2621,7 @@ function routeAuthenticatedUser(appState) {
     updateFlowStep();
     renderAllocationScreen();
     renderDashboard();
-    showScreen('dashboard');
+    showScreen(userSettings.openDashboardFirst ? 'dashboard' : 'allocation');
     return;
   }
 
@@ -2561,6 +2802,7 @@ function updateHeaderAuthState() {
     headerAuthButton.removeAttribute('data-open-auth');
     headerAuthButton.classList.add('header-link-user');
     headerAuthButton.setAttribute('aria-label', `Signed in as ${currentUser.firstName} ${currentUser.lastName}`);
+    headerAuthButton.setAttribute('aria-expanded', 'false');
     return;
   }
 
@@ -2568,6 +2810,97 @@ function updateHeaderAuthState() {
   headerAuthButton.setAttribute('data-open-auth', 'login');
   headerAuthButton.classList.remove('header-link-user');
   headerAuthButton.setAttribute('aria-label', 'Log In');
+  headerAuthButton.setAttribute('aria-expanded', 'false');
+  closeHeaderMenu();
+}
+
+async function handleAccountProfileSave(event) {
+  event.preventDefault();
+  if (!profileAccountForm || profileState.savingAccount) {
+    return;
+  }
+
+  const firstName = profileAccountForm.elements.firstName.value.trim();
+  const lastName = profileAccountForm.elements.lastName.value.trim();
+  const email = profileAccountForm.elements.email.value.trim().toLowerCase();
+
+  if (!firstName || !lastName || !email) {
+    setProfileFeedback(profileAccountFeedback, 'Please complete your first name, last name, and email.', 'error');
+    return;
+  }
+
+  profileState.savingAccount = true;
+  if (profileAccountSaveButton) {
+    profileAccountSaveButton.disabled = true;
+    profileAccountSaveButton.textContent = 'Saving...';
+  }
+
+  try {
+    const payload = await apiRequest('/api/account/profile', {
+      method: 'POST',
+      body: { firstName, lastName, email }
+    });
+    saveCurrentUser(payload.user);
+    setProfileFeedback(profileAccountFeedback, payload.message || 'Account updated successfully.', 'success');
+    updateHeaderAuthState();
+  } catch (error) {
+    setProfileFeedback(profileAccountFeedback, error.message || 'We could not update your account.', 'error');
+  } finally {
+    profileState.savingAccount = false;
+    if (profileAccountSaveButton) {
+      profileAccountSaveButton.disabled = false;
+      profileAccountSaveButton.textContent = 'Save account';
+    }
+  }
+}
+
+function handleResetPasswordFromProfile() {
+  if (!currentUser || !authRecoveryForm) {
+    return;
+  }
+
+  closeProfileModal();
+  setRecoveryStage('request');
+  setAuthMode('recovery');
+  authRecoveryForm.reset();
+  authRecoveryForm.elements.email.value = currentUser.email || '';
+  openModal(authModal);
+  setAuthFeedback(authRecoveryFeedback, 'We’ll email you a recovery code to reset your password.', 'success');
+}
+
+async function handleSignOut() {
+  try {
+    await apiRequest('/api/auth/logout', { method: 'POST' });
+  } catch {
+  }
+
+  currentUser = null;
+  dashboardState = null;
+  allocationState = null;
+  reviewState.items = [];
+  reviewState.summary = { queueCount: 0, monthLabel: null };
+  plaidState = {
+    loading: false,
+    connecting: false,
+    entitlement: null,
+    summary: null,
+    items: [],
+    error: '',
+    success: ''
+  };
+  syncPersistedState({
+    incomeProfile: null,
+    monthlyBudget: null,
+    hasCompletedOnboarding: false
+  });
+  saveCurrentUser(null);
+  updateHeaderAuthState();
+  closeHeaderMenu();
+  closeProfileModal();
+  currentStep = 1;
+  previousStep = 1;
+  updateFlowStep();
+  showScreen('landing');
 }
 
 function setAuthFeedback(target, message, type = '') {
@@ -2860,12 +3193,36 @@ function updateMethodUI() {
 }
 
 openAuthButtons.forEach(button => {
-  button.addEventListener('click', () => {
+  button.addEventListener('click', event => {
+    if (button === headerAuthButton && currentUser) {
+      event.preventDefault();
+      toggleHeaderMenu();
+      return;
+    }
+
     if (!button.dataset.openAuth) {
       return;
     }
     setAuthMode(button.dataset.openAuth);
+    setRecoveryStage('request');
+    clearAuthFeedback();
     openModal(authModal);
+  });
+});
+
+profileNavButtons.forEach(button => {
+  button.addEventListener('click', () => setProfileView(button.dataset.profileNav));
+});
+
+document.querySelectorAll('[data-open-profile-view]').forEach(button => {
+  button.addEventListener('click', () => openProfileModal(button.dataset.openProfileView));
+});
+
+document.querySelectorAll('[data-setting-toggle]').forEach(input => {
+  input.addEventListener('change', () => {
+    userSettings[input.dataset.settingToggle] = input.checked;
+    saveUserSettings();
+    setProfileFeedback(profileSettingsFeedback, 'Settings updated.', 'success');
   });
 });
 
@@ -3075,6 +3432,33 @@ authModal?.addEventListener('click', event => {
     closeModal(authModal);
   }
 });
+profileModalCloseButton?.addEventListener('click', closeProfileModal);
+profileModal?.addEventListener('click', event => {
+  const closeTarget = event.target.closest('[data-close-modal]');
+  if (closeTarget) {
+    closeProfileModal();
+  }
+});
+profileAccountForm?.addEventListener('submit', handleAccountProfileSave);
+profileResetPasswordButton?.addEventListener('click', handleResetPasswordFromProfile);
+headerSignoutButton?.addEventListener('click', handleSignOut);
+profileUpgradeButton?.addEventListener('click', () => {
+  setProfileView('billing');
+  setProfileFeedback(profileBillingFeedback, 'Premium checkout wiring is the next step. This space is ready for Stripe when you are.', 'success');
+});
+profileManagePremiumButton?.addEventListener('click', () => {
+  setProfileView('billing');
+  setProfileFeedback(profileBillingFeedback, 'Premium management will plug into Stripe subscription controls next.', 'success');
+});
+profileOpenDashboardButton?.addEventListener('click', () => {
+  closeProfileModal();
+  showScreen('dashboard');
+});
+profileConnectBankButton?.addEventListener('click', async () => {
+  closeProfileModal();
+  showScreen('dashboard');
+  await startPlaidLinkFlow();
+});
 
 dashboardBackButton?.addEventListener('click', () => showScreen('allocation'));
 reviewRefreshButton?.addEventListener('click', syncPlaidTransactions);
@@ -3121,8 +3505,25 @@ plaidDisconnectModal?.addEventListener('click', event => {
     closePlaidDisconnectModal();
   }
 });
+profileBankList?.addEventListener('click', event => {
+  const disconnectButton = event.target.closest('[data-disconnect-plaid-account]');
+  if (disconnectButton) {
+    openPlaidDisconnectModal(disconnectButton.dataset.disconnectPlaidAccount);
+  }
+});
 transactionForm?.addEventListener('submit', handleTransactionSubmit);
 
+document.addEventListener('click', event => {
+  if (!headerAccountMenu || headerAccountMenu.hidden) {
+    return;
+  }
+
+  if (!event.target.closest('.header-account')) {
+    closeHeaderMenu();
+  }
+});
+
+loadUserSettings();
 setAuthMode('signup');
 setRecoveryStage('request');
 loadCurrentUser();

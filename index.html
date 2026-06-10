@@ -26,7 +26,16 @@
       <img class="brand-mark" src="./largent-black.png" alt="Largent app icon" />
       <span>Largent</span>
     </div>
-    <button class="header-link" type="button" data-open-auth="login" id="header-auth-button">Log In</button>
+    <div class="header-account">
+      <button class="header-link" type="button" data-open-auth="login" id="header-auth-button" aria-haspopup="menu" aria-expanded="false">Log In</button>
+      <div class="header-dropdown" id="header-account-menu" role="menu" hidden>
+        <button class="header-dropdown-item" type="button" role="menuitem" data-open-profile-view="account">Account</button>
+        <button class="header-dropdown-item" type="button" role="menuitem" data-open-profile-view="settings">Settings</button>
+        <button class="header-dropdown-item" type="button" role="menuitem" data-open-profile-view="billing">Billing</button>
+        <button class="header-dropdown-item" type="button" role="menuitem" data-open-profile-view="banking">Bank Connections</button>
+        <button class="header-dropdown-item header-dropdown-item-danger" type="button" role="menuitem" id="header-signout-button">Sign Out</button>
+      </div>
+    </div>
   </header>
 
   <main id="main" class="app-shell">
@@ -643,6 +652,124 @@
             <button class="text-link auth-forgot-link" type="button" id="auth-recovery-back">Back to log in</button>
           </div>
         </form>
+      </div>
+    </div>
+  </div>
+
+  <div class="modal-shell" id="profile-modal" hidden>
+    <div class="modal-backdrop" data-close-modal="profile-modal"></div>
+    <div class="modal-card profile-modal-card card" role="dialog" aria-modal="true" aria-labelledby="profile-modal-title">
+      <button class="modal-close" type="button" id="profile-modal-close" aria-label="Close account menu">×</button>
+      <div class="profile-modal-layout">
+        <aside class="profile-nav" aria-label="Account navigation">
+          <button class="profile-nav-item profile-nav-item-active" type="button" data-profile-nav="account">Account</button>
+          <button class="profile-nav-item" type="button" data-profile-nav="settings">Settings</button>
+          <button class="profile-nav-item profile-nav-item-premium" type="button" data-profile-nav="billing">Billing</button>
+          <button class="profile-nav-item" type="button" data-profile-nav="banking">Bank Connections</button>
+        </aside>
+
+        <div class="profile-panel-wrap">
+          <section class="profile-panel profile-panel-active" data-profile-panel="account" aria-labelledby="profile-modal-title">
+            <div class="profile-panel-head">
+              <p class="eyebrow">Account</p>
+              <h3 id="profile-modal-title">Your identity and login details.</h3>
+              <p>Update your name and email, or request a password reset code.</p>
+            </div>
+
+            <form class="profile-form" id="profile-account-form">
+              <div class="field-grid">
+                <label class="field">
+                  <span>First name</span>
+                  <input type="text" name="firstName" autocomplete="given-name" />
+                </label>
+                <label class="field">
+                  <span>Last name</span>
+                  <input type="text" name="lastName" autocomplete="family-name" />
+                </label>
+                <label class="field field-grid-span-2">
+                  <span>Email</span>
+                  <input type="email" name="email" autocomplete="email" />
+                </label>
+              </div>
+              <p class="auth-feedback" id="profile-account-feedback" role="status" aria-live="polite"></p>
+              <div class="profile-form-actions">
+                <button class="button button-secondary" type="button" id="profile-reset-password-button">Reset password</button>
+                <button class="button button-primary" type="submit" id="profile-account-save-button">Save account</button>
+              </div>
+            </form>
+          </section>
+
+          <section class="profile-panel" data-profile-panel="settings" aria-labelledby="profile-settings-title">
+            <div class="profile-panel-head">
+              <p class="eyebrow">Settings</p>
+              <h3 id="profile-settings-title">Personalize how Largent feels.</h3>
+              <p>Keep these lightweight and useful for everyday budgeting.</p>
+            </div>
+
+            <div class="settings-list" id="profile-settings-list">
+              <label class="settings-row">
+                <div>
+                  <strong>Monthly summary emails</strong>
+                  <span>Get a monthly recap when that email flow is active.</span>
+                </div>
+                <input type="checkbox" data-setting-toggle="monthlySummaryEmail" />
+              </label>
+              <label class="settings-row">
+                <div>
+                  <strong>Security emails</strong>
+                  <span>Keep password reset and account security notices enabled.</span>
+                </div>
+                <input type="checkbox" data-setting-toggle="securityEmails" />
+              </label>
+              <label class="settings-row">
+                <div>
+                  <strong>Reduce motion</strong>
+                  <span>Tone down sliding and modal animations across the app.</span>
+                </div>
+                <input type="checkbox" data-setting-toggle="reduceMotion" />
+              </label>
+              <label class="settings-row">
+                <div>
+                  <strong>Open to dashboard</strong>
+                  <span>Jump straight into your current month when you log in.</span>
+                </div>
+                <input type="checkbox" data-setting-toggle="openDashboardFirst" />
+              </label>
+            </div>
+            <p class="auth-feedback" id="profile-settings-feedback" role="status" aria-live="polite"></p>
+          </section>
+
+          <section class="profile-panel profile-panel-premium" data-profile-panel="billing" aria-labelledby="profile-billing-title">
+            <div class="profile-panel-head">
+              <p class="eyebrow">Billing</p>
+              <h3 id="profile-billing-title">Premium and subscription details.</h3>
+              <p>Premium will power bank sync and future advanced automation.</p>
+            </div>
+
+            <div class="premium-summary" id="profile-billing-summary"></div>
+            <div class="premium-actions">
+              <button class="button button-primary" type="button" id="profile-upgrade-button">Upgrade plan</button>
+              <button class="button button-secondary" type="button" id="profile-manage-premium-button">Remove premium</button>
+            </div>
+            <p class="auth-feedback" id="profile-billing-feedback" role="status" aria-live="polite"></p>
+          </section>
+
+          <section class="profile-panel" data-profile-panel="banking" aria-labelledby="profile-banking-title">
+            <div class="profile-panel-head">
+              <p class="eyebrow">Bank Connections</p>
+              <h3 id="profile-banking-title">Manage connected accounts.</h3>
+              <p>Review what’s linked, then swap or add eligible accounts.</p>
+            </div>
+
+            <div class="profile-bank-summary" id="profile-bank-summary"></div>
+            <div class="profile-bank-list" id="profile-bank-list"></div>
+            <div class="profile-form-actions">
+              <button class="button button-secondary" type="button" id="profile-open-dashboard-button">Open dashboard</button>
+              <button class="button button-primary" type="button" id="profile-connect-bank-button">Connect bank</button>
+            </div>
+            <p class="auth-feedback" id="profile-banking-feedback" role="status" aria-live="polite"></p>
+          </section>
+        </div>
       </div>
     </div>
   </div>

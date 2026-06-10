@@ -1121,6 +1121,59 @@ def create_app() -> Flask:
             }
         )
 
+    @app.post("/api/plaid/accounts/<uuid:account_id>/disconnect")
+    def disconnect_plaid_account(account_id):
+        user = get_current_user()
+        if not user:
+            return jsonify({"message": "You must be logged in to manage bank connections."}), 401
+
+        account = db.session.get(PlaidAccount, account_id)
+        if not account or account.user_id != user.id or not account.is_active:
+            return jsonify({"message": "That connected account could not be found."}), 404
+
+        item = account.plaid_item
+        account.is_active = False
+        account.last_synced_at = datetime.utcnow()
+
+        remaining_active_accounts = (
+            db.session.execute(
+                db.select(func.count(PlaidAccount.id))
+                .filter(
+                    PlaidAccount.plaid_item_row_id == item.id,
+                    PlaidAccount.is_active.is_(True),
+                    PlaidAccount.id != account.id,
+                )
+            ).scalar_one()
+        )
+
+        if int(remaining_active_accounts) == 0:
+            item.status = "disconnected"
+            item.disconnected_at = datetime.utcnow()
+            item.last_synced_at = datetime.utcnow()
+            try:
+                plaid_api_request("/item/remove", {"access_token": decrypt_plaid_access_token(item.plaid_access_token_encrypted)})
+            except Exception:
+                pass
+
+        db.session.commit()
+
+        refreshed_items = get_plaid_items_for_user(user)
+        entitlement = get_user_entitlement(user, create_if_missing=True)
+        active_accounts_count = get_active_plaid_accounts_count(user)
+
+        return jsonify(
+            {
+                "message": "Connected bank account removed.",
+                "summary": {
+                    "activeConnectedAccounts": active_accounts_count,
+                    "maxLinkedAccounts": entitlement.max_linked_accounts if entitlement else 2,
+                    "canLinkMoreAccounts": active_accounts_count < (entitlement.max_linked_accounts if entitlement else 2),
+                    "premiumRequired": not (entitlement.premium_access and entitlement.bank_sync_enabled) if entitlement else True,
+                },
+                "items": [serialize_plaid_item(item) for item in refreshed_items],
+            }
+        )
+
     @app.get("/api/plaid/review-queue")
     def plaid_review_queue():
         user = get_current_user()
@@ -1536,6 +1589,33 @@ def create_app() -> Flask:
             return jsonify({"authenticated": False, "user": None}), 200
 
         return jsonify({"authenticated": True, "user": serialize_user(user)})
+
+    @app.post("/api/account/profile")
+    def update_account_profile():
+        user = get_current_user()
+        if not user:
+            return jsonify({"message": "You must be logged in to update your account."}), 401
+
+        payload = request.get_json(silent=True) or {}
+        first_name = (payload.get("firstName") or "").strip()
+        last_name = (payload.get("lastName") or "").strip()
+        email = (payload.get("email") or "").strip().lower()
+
+        if not first_name or not last_name or not email:
+            return jsonify({"message": "First name, last name, and email are all required."}), 400
+
+        existing_user = db.session.execute(
+            db.select(User).filter(User.email == email, User.id != user.id)
+        ).scalar_one_or_none()
+        if existing_user:
+            return jsonify({"message": "That email is already being used by another account."}), 409
+
+        user.first_name = first_name
+        user.last_name = last_name
+        user.email = email
+        db.session.commit()
+
+        return jsonify({"message": "Account updated successfully.", "user": serialize_user(user)})
 
     @app.post("/api/auth/logout")
     def logout():
