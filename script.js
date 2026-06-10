@@ -1770,7 +1770,7 @@ passwordToggleButtons.forEach(button => {
     input.type = isShowing ? 'password' : 'text';
     button.setAttribute('aria-pressed', String(!isShowing));
     button.setAttribute('aria-label', isShowing ? 'Show password' : 'Hide password');
-    button.innerHTML = `<span aria-hidden="true">${isShowing ? '👁' : '🙈'}</span>`;
+    button.innerHTML = `<span aria-hidden="true">${isShowing ? 'Show' : 'Hide'}</span>`;
   });
 });
 
