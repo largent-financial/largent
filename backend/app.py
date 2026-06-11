@@ -6,12 +6,15 @@ from cryptography.fernet import Fernet
 from datetime import datetime
 from email.message import EmailMessage
 import hashlib
+import hmac
 import json
 import secrets
 import smtplib
 import ssl
 import string
+import time
 from urllib import error as urlerror
+from urllib import parse as urlparse
 from urllib import request as urlrequest
 from uuid import UUID
 
@@ -501,6 +504,151 @@ def create_app() -> Flask:
             return f"{app_base_url}/api/plaid/webhooks"
         return None
 
+    def stripe_api_request(path: str, payload: dict | None = None, *, method: str = "POST") -> dict:
+        secret_key = app.config.get("STRIPE_SECRET_KEY")
+        if not secret_key:
+            raise RuntimeError("Stripe secret key is not configured.")
+
+        request_path = path
+        encoded_payload = None
+        if method == "GET" and payload:
+            request_path = f"{path}?{urlparse.urlencode(payload, doseq=True)}"
+        elif payload is not None:
+            encoded_payload = urlparse.urlencode(payload, doseq=True).encode("utf-8")
+
+        stripe_request = urlrequest.Request(
+            f"https://api.stripe.com{request_path}",
+            data=encoded_payload,
+            headers={
+                "Authorization": f"Bearer {secret_key}",
+                "Content-Type": "application/x-www-form-urlencoded",
+            },
+            method=method,
+        )
+
+        try:
+            with urlrequest.urlopen(stripe_request, timeout=30) as response:
+                return json.loads(response.read().decode("utf-8"))
+        except urlerror.HTTPError as error:
+            error_payload = error.read().decode("utf-8") if error.fp else ""
+            try:
+                parsed_payload = json.loads(error_payload) if error_payload else {}
+            except json.JSONDecodeError:
+                parsed_payload = {}
+            message = (
+                parsed_payload.get("error", {}).get("message")
+                or parsed_payload.get("error_message")
+                or "Stripe request failed."
+            )
+            raise ValueError(message) from error
+
+    def stripe_timestamp_to_datetime(timestamp_value: int | None) -> datetime | None:
+        if not timestamp_value:
+            return None
+        return datetime.utcfromtimestamp(int(timestamp_value))
+
+    def stripe_subscription_is_active(status: str | None, cancel_at_period_end: bool = False) -> bool:
+        if not status:
+            return False
+        return status in {"active", "trialing", "past_due"}
+
+    def update_user_entitlement_from_subscription(user: User, subscription: UserSubscription | None) -> UserEntitlement:
+        entitlement = get_user_entitlement(user, create_if_missing=True)
+        premium_active = bool(subscription and stripe_subscription_is_active(subscription.status, subscription.cancel_at_period_end))
+        entitlement.premium_access = premium_active
+        entitlement.bank_sync_enabled = premium_active
+        entitlement.max_linked_accounts = 2
+        entitlement.source = "stripe" if premium_active else "system"
+        return entitlement
+
+    def upsert_subscription_from_stripe(user: User, stripe_subscription: dict, *, customer_id: str | None = None) -> UserSubscription:
+        provider_subscription_id = stripe_subscription.get("id")
+        subscription = None
+        if provider_subscription_id:
+            subscription = (
+                db.session.execute(
+                    db.select(UserSubscription).filter_by(provider_subscription_id=provider_subscription_id)
+                )
+                .scalars()
+                .first()
+            )
+        if not subscription:
+            subscription = get_active_subscription(user)
+        if not subscription:
+            subscription = UserSubscription(
+                user_id=user.id,
+                provider="stripe",
+                plan_key="premium_monthly",
+                status="incomplete",
+            )
+            db.session.add(subscription)
+
+        subscription.provider = "stripe"
+        subscription.provider_customer_id = customer_id or stripe_subscription.get("customer") or subscription.provider_customer_id
+        subscription.provider_subscription_id = provider_subscription_id or subscription.provider_subscription_id
+        subscription.plan_key = "premium_monthly"
+        subscription.status = stripe_subscription.get("status") or subscription.status
+        subscription.current_period_start = stripe_timestamp_to_datetime(stripe_subscription.get("current_period_start"))
+        subscription.current_period_end = stripe_timestamp_to_datetime(stripe_subscription.get("current_period_end"))
+        subscription.cancel_at_period_end = bool(stripe_subscription.get("cancel_at_period_end"))
+        subscription.canceled_at = stripe_timestamp_to_datetime(stripe_subscription.get("canceled_at"))
+        update_user_entitlement_from_subscription(user, subscription)
+        return subscription
+
+    def sync_subscription_from_checkout_session(user: User, session_id: str) -> UserSubscription | None:
+        checkout_session = stripe_api_request(
+            f"/v1/checkout/sessions/{session_id}",
+            {"expand[]": ["subscription"]},
+            method="GET",
+        )
+        stripe_subscription = checkout_session.get("subscription")
+        if isinstance(stripe_subscription, str) and stripe_subscription:
+            stripe_subscription = stripe_api_request(f"/v1/subscriptions/{stripe_subscription}", None, method="GET")
+        if not stripe_subscription:
+            return None
+        subscription = upsert_subscription_from_stripe(
+            user,
+            stripe_subscription,
+            customer_id=checkout_session.get("customer"),
+        )
+        db.session.commit()
+        return subscription
+
+    def find_user_by_stripe_customer_id(customer_id: str | None) -> User | None:
+        if not customer_id:
+            return None
+        subscription = (
+            db.session.execute(
+                db.select(UserSubscription)
+                .filter_by(provider_customer_id=customer_id)
+                .order_by(UserSubscription.created_at.desc())
+            )
+            .scalars()
+            .first()
+        )
+        if subscription:
+            return db.session.get(User, subscription.user_id)
+        return None
+
+    def verify_stripe_webhook(payload_bytes: bytes, signature_header: str | None) -> bool:
+        webhook_secret = app.config.get("STRIPE_WEBHOOK_SECRET")
+        if not webhook_secret or not signature_header:
+            return False
+
+        try:
+            parts = dict(part.split("=", 1) for part in signature_header.split(","))
+            timestamp = parts.get("t")
+            signature = parts.get("v1")
+            if not timestamp or not signature:
+                return False
+            signed_payload = f"{timestamp}.{payload_bytes.decode('utf-8')}".encode("utf-8")
+            expected = hmac.new(webhook_secret.encode("utf-8"), signed_payload, hashlib.sha256).hexdigest()
+            if not hmac.compare_digest(expected, signature):
+                return False
+            return abs(time.time() - int(timestamp)) <= 300
+        except Exception:
+            return False
+
     def get_plaid_fernet() -> Fernet:
         configured_key = app.config.get("PLAID_TOKEN_ENCRYPTION_KEY")
         if configured_key:
@@ -971,6 +1119,113 @@ def create_app() -> Flask:
                 "user": serialize_user(user),
                 "entitlement": serialize_entitlement(entitlement),
                 "subscription": serialize_subscription(subscription),
+                "stripe": {
+                    "configured": bool(app.config.get("STRIPE_SECRET_KEY") and app.config.get("STRIPE_PRICE_ID")),
+                    "publishableKey": app.config.get("STRIPE_PUBLISHABLE_KEY"),
+                },
+            }
+        )
+
+    @app.post("/api/stripe/checkout-session")
+    def create_stripe_checkout_session():
+        user = get_current_user()
+        if not user:
+            return jsonify({"message": "You must be logged in to upgrade to Premium."}), 401
+
+        price_id = app.config.get("STRIPE_PRICE_ID")
+        app_base_url = (app.config.get("APP_BASE_URL") or "").rstrip("/")
+        if not app.config.get("STRIPE_SECRET_KEY") or not price_id or not app_base_url:
+            return jsonify({"message": "Stripe is not configured yet."}), 503
+
+        subscription = get_active_subscription(user)
+        customer_id = subscription.provider_customer_id if subscription and subscription.provider_customer_id else None
+
+        if not customer_id:
+            customer = stripe_api_request(
+                "/v1/customers",
+                {
+                    "email": user.email,
+                    "name": f"{user.first_name} {user.last_name}".strip(),
+                    "metadata[user_id]": str(user.id),
+                },
+            )
+            customer_id = customer.get("id")
+
+        checkout_session = stripe_api_request(
+            "/v1/checkout/sessions",
+            {
+                "mode": "subscription",
+                "customer": customer_id,
+                "line_items[0][price]": price_id,
+                "line_items[0][quantity]": 1,
+                "success_url": f"{app_base_url}/?stripe=success&session_id={{CHECKOUT_SESSION_ID}}",
+                "cancel_url": f"{app_base_url}/?stripe=cancelled",
+                "allow_promotion_codes": "true",
+                "metadata[user_id]": str(user.id),
+                "subscription_data[metadata][user_id]": str(user.id),
+            },
+        )
+
+        if subscription:
+            subscription.provider_customer_id = customer_id
+        else:
+            provisional_subscription = UserSubscription(
+                user_id=user.id,
+                provider="stripe",
+                provider_customer_id=customer_id,
+                plan_key="premium_monthly",
+                status="checkout_started",
+            )
+            db.session.add(provisional_subscription)
+        db.session.commit()
+
+        return jsonify({"url": checkout_session.get("url")})
+
+    @app.post("/api/stripe/billing-portal")
+    def create_stripe_billing_portal():
+        user = get_current_user()
+        if not user:
+            return jsonify({"message": "You must be logged in to manage billing."}), 401
+
+        subscription = get_active_subscription(user)
+        customer_id = subscription.provider_customer_id if subscription else None
+        app_base_url = (app.config.get("APP_BASE_URL") or "").rstrip("/")
+
+        if not app.config.get("STRIPE_SECRET_KEY") or not customer_id or not app_base_url:
+            return jsonify({"message": "No billing portal is available for this account yet."}), 400
+
+        portal_session = stripe_api_request(
+            "/v1/billing_portal/sessions",
+            {
+                "customer": customer_id,
+                "return_url": f"{app_base_url}/?billing=returned",
+            },
+        )
+        return jsonify({"url": portal_session.get("url")})
+
+    @app.get("/api/stripe/checkout-session-status")
+    def stripe_checkout_session_status():
+        user = get_current_user()
+        if not user:
+            return jsonify({"message": "You must be logged in to verify Premium access."}), 401
+
+        session_id = request.args.get("session_id", "").strip()
+        if not session_id:
+            return jsonify({"message": "Stripe session ID is required."}), 400
+
+        try:
+            subscription = sync_subscription_from_checkout_session(user, session_id)
+        except ValueError as error:
+            db.session.rollback()
+            return jsonify({"message": str(error)}), 502
+
+        entitlement = get_user_entitlement(user, create_if_missing=True)
+        db.session.commit()
+        return jsonify(
+            {
+                "user": serialize_user(user),
+                "entitlement": serialize_entitlement(entitlement),
+                "subscription": serialize_subscription(subscription),
             }
         )
 
@@ -1423,6 +1678,50 @@ def create_app() -> Flask:
         )
         db.session.commit()
         return jsonify({"status": "ok"})
+
+    @app.post("/api/stripe/webhook")
+    def stripe_webhook():
+        payload_bytes = request.get_data(cache=False)
+        signature_header = request.headers.get("Stripe-Signature")
+
+        if not verify_stripe_webhook(payload_bytes, signature_header):
+            return jsonify({"message": "Invalid Stripe signature."}), 400
+
+        payload = json.loads(payload_bytes.decode("utf-8") or "{}")
+        event_type = payload.get("type")
+        data_object = payload.get("data", {}).get("object", {})
+
+        user = None
+        stripe_subscription = None
+        customer_id = data_object.get("customer")
+
+        if event_type == "checkout.session.completed":
+            metadata = data_object.get("metadata") or {}
+            user_id = metadata.get("user_id")
+            if user_id:
+                try:
+                    user = db.session.get(User, UUID(user_id))
+                except (ValueError, TypeError):
+                    user = None
+            stripe_subscription = data_object.get("subscription")
+            if isinstance(stripe_subscription, str) and stripe_subscription:
+                try:
+                    stripe_subscription = stripe_api_request(f"/v1/subscriptions/{stripe_subscription}", None, method="GET")
+                except ValueError:
+                    stripe_subscription = None
+            if user and stripe_subscription:
+                upsert_subscription_from_stripe(user, stripe_subscription, customer_id=customer_id)
+                db.session.commit()
+            return jsonify({"status": "ok"})
+
+        if event_type in {"customer.subscription.created", "customer.subscription.updated", "customer.subscription.deleted"}:
+            user = find_user_by_stripe_customer_id(customer_id)
+            if user:
+                upsert_subscription_from_stripe(user, data_object, customer_id=customer_id)
+                db.session.commit()
+            return jsonify({"status": "ok"})
+
+        return jsonify({"status": "ignored"})
 
     def is_strong_password(password: str) -> bool:
         return len(password) >= 8 and any(character.isdigit() for character in password) and any(

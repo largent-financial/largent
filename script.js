@@ -1544,6 +1544,72 @@ function openPremiumBillingExperience(message = '') {
   }
 }
 
+async function beginStripeCheckout() {
+  try {
+    setProfileFeedback(profileBillingFeedback, 'Opening secure checkout…');
+    const payload = await apiRequest('/api/stripe/checkout-session', { method: 'POST' });
+    if (!payload.url) {
+      throw new Error('Stripe checkout URL was missing.');
+    }
+    window.location.href = payload.url;
+  } catch (error) {
+    setProfileFeedback(profileBillingFeedback, error.message || 'We could not start checkout right now.', 'error');
+  }
+}
+
+async function openStripeBillingPortal() {
+  try {
+    setProfileFeedback(profileBillingFeedback, 'Opening billing portal…');
+    const payload = await apiRequest('/api/stripe/billing-portal', { method: 'POST' });
+    if (!payload.url) {
+      throw new Error('Stripe billing portal URL was missing.');
+    }
+    window.location.href = payload.url;
+  } catch (error) {
+    setProfileFeedback(profileBillingFeedback, error.message || 'We could not open billing right now.', 'error');
+  }
+}
+
+async function handleStripeReturnState() {
+  const params = new URLSearchParams(window.location.search);
+  const stripeState = params.get('stripe');
+  const sessionId = params.get('session_id');
+  const billingState = params.get('billing');
+
+  if (stripeState === 'success' && sessionId && currentUser) {
+    try {
+      await apiRequest(`/api/stripe/checkout-session-status?session_id=${encodeURIComponent(sessionId)}`);
+      await loadPremiumStatus();
+      await loadPlaidStatus({ silent: true });
+      renderPremiumUpsellCard();
+      renderProfileBillingPanel();
+      openProfileModal('billing');
+      setProfileFeedback(profileBillingFeedback, 'Premium is active. Bank sync is now unlocked.', 'success');
+    } catch (error) {
+      openProfileModal('billing');
+      setProfileFeedback(profileBillingFeedback, error.message || 'Payment went through, but we could not confirm Premium yet.', 'error');
+    } finally {
+      window.history.replaceState({}, document.title, window.location.pathname);
+    }
+    return;
+  }
+
+  if (stripeState === 'cancelled' && currentUser) {
+    openProfileModal('billing');
+    setProfileFeedback(profileBillingFeedback, 'Checkout was canceled. You can try again any time.', 'error');
+    window.history.replaceState({}, document.title, window.location.pathname);
+    return;
+  }
+
+  if (billingState === 'returned' && currentUser) {
+    await loadPremiumStatus();
+    renderProfileBillingPanel();
+    openProfileModal('billing');
+    setProfileFeedback(profileBillingFeedback, 'Billing details refreshed.', 'success');
+    window.history.replaceState({}, document.title, window.location.pathname);
+  }
+}
+
 function flattenPlaidAccounts(items = []) {
   return items.flatMap(item =>
     (item.accounts || [])
@@ -2400,6 +2466,15 @@ function renderProfileBillingPanel() {
       <div><strong>Connected accounts</strong><span>Up to ${entitlement?.maxLinkedAccounts ?? 2}</span></div>
     </div>
   `;
+
+  if (profileUpgradeButton) {
+    profileUpgradeButton.textContent = premiumActive ? 'Premium active' : 'Upgrade plan';
+    profileUpgradeButton.disabled = premiumActive;
+  }
+  if (profileManagePremiumButton) {
+    profileManagePremiumButton.textContent = premiumActive ? 'Manage billing' : 'No premium to manage';
+    profileManagePremiumButton.disabled = !premiumActive;
+  }
 }
 
 function renderProfileBankingPanel() {
@@ -2792,6 +2867,7 @@ async function loadCurrentUser() {
   try {
     const payload = await loadAppState();
     routeAuthenticatedUser(payload);
+    await handleStripeReturnState();
   } catch {
     saveCurrentUser(null);
     syncPersistedState();
@@ -3520,11 +3596,10 @@ profileAccountConfirmModal?.addEventListener('click', event => {
 profileResetPasswordButton?.addEventListener('click', handleResetPasswordFromProfile);
 headerSignoutButton?.addEventListener('click', handleSignOut);
 profileUpgradeButton?.addEventListener('click', () => {
-  openPremiumBillingExperience('Premium checkout wiring is the next step. This space is ready for Stripe when you are.');
+  beginStripeCheckout();
 });
 profileManagePremiumButton?.addEventListener('click', () => {
-  setProfileView('billing');
-  setProfileFeedback(profileBillingFeedback, 'Premium management will plug into Stripe subscription controls next.', 'success');
+  openStripeBillingPortal();
 });
 profileOpenDashboardButton?.addEventListener('click', () => {
   closeProfileModal();
@@ -3540,7 +3615,7 @@ dashboardBackButton?.addEventListener('click', () => showScreen('allocation'));
 reviewRefreshButton?.addEventListener('click', syncPlaidTransactions);
 premiumInfoToggle?.addEventListener('click', togglePremiumInfoPanel);
 premiumUpsellButton?.addEventListener('click', () => {
-  openPremiumBillingExperience('Premium checkout wiring is the next step. This space is ready for Stripe when you are.');
+  beginStripeCheckout();
 });
 plaidConnectButton?.addEventListener('click', startPlaidLinkFlow);
 plaidConnectedList?.addEventListener('click', event => {
