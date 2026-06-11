@@ -121,6 +121,86 @@ def create_app() -> Flask:
 
         click.echo("User email preference columns synced.")
 
+    @app.cli.command("sync-email-events-schema")
+    def sync_email_events_schema_command():
+        raw_connection = db.engine.raw_connection()
+        try:
+            with raw_connection.cursor() as cursor:
+                cursor.execute(
+                    """
+                    alter table email_events
+                    add column if not exists auth_token_id uuid references auth_tokens(id) on delete set null,
+                    add column if not exists monthly_budget_id uuid references monthly_budgets(id) on delete set null,
+                    add column if not exists provider_status varchar(100),
+                    add column if not exists failed_at timestamptz,
+                    add column if not exists error_message text,
+                    add column if not exists updated_at timestamptz not null default now()
+                    """
+                )
+                cursor.execute(
+                    """
+                    do $$
+                    begin
+                      if exists (
+                        select 1 from information_schema.columns
+                        where table_name = 'email_events' and column_name = 'related_token_id'
+                      ) then
+                        execute '
+                          update email_events
+                          set auth_token_id = related_token_id
+                          where auth_token_id is null
+                        ';
+                      end if;
+                    end $$;
+                    """
+                )
+                cursor.execute(
+                    """
+                    do $$
+                    begin
+                      if exists (
+                        select 1 from information_schema.columns
+                        where table_name = 'email_events' and column_name = 'related_budget_id'
+                      ) then
+                        execute '
+                          update email_events
+                          set monthly_budget_id = related_budget_id
+                          where monthly_budget_id is null
+                        ';
+                      end if;
+                    end $$;
+                    """
+                )
+                cursor.execute(
+                    """
+                    do $$
+                    begin
+                      if exists (
+                        select 1 from information_schema.columns
+                        where table_name = 'email_events' and column_name = 'failure_reason'
+                      ) then
+                        execute '
+                          update email_events
+                          set error_message = failure_reason
+                          where error_message is null
+                        ';
+                      end if;
+                    end $$;
+                    """
+                )
+                cursor.execute(
+                    """
+                    update email_events
+                    set updated_at = created_at
+                    where updated_at is null
+                    """
+                )
+            raw_connection.commit()
+        finally:
+            raw_connection.close()
+
+        click.echo("Email events schema synced.")
+
     @app.cli.command("sync-banking-billing-schema")
     def sync_banking_billing_schema_command():
         raw_connection = db.engine.raw_connection()
@@ -1386,6 +1466,15 @@ def create_app() -> Flask:
             )
         )
 
+    def persist_email_event_safely() -> bool:
+        try:
+            db.session.commit()
+            return True
+        except Exception:
+            db.session.rollback()
+            app.logger.exception("Email event logging failed.")
+            return False
+
     def should_send_email_for_preference(user: User, preference_key: str | None) -> bool:
         if preference_key == "monthly_summary":
             return user.monthly_summary_emails_enabled
@@ -1437,7 +1526,7 @@ def create_app() -> Flask:
                 provider_status="suppressed",
                 error_message=f"Suppressed by {preference_key or 'default'} preference.",
             )
-            db.session.commit()
+            persist_email_event_safely()
             return False
 
         try:
@@ -1450,19 +1539,22 @@ def create_app() -> Flask:
                 provider_status="sent",
                 sent_at=datetime.utcnow(),
             )
-            db.session.commit()
+            persist_email_event_safely()
             return True
         except Exception as error:
-            log_email_event(
-                user=user,
-                event_type=event_type,
-                recipient_email=user.email,
-                monthly_budget=monthly_budget,
-                provider_status="failed",
-                failed_at=datetime.utcnow(),
-                error_message=str(error),
-            )
-            db.session.commit()
+            try:
+                log_email_event(
+                    user=user,
+                    event_type=event_type,
+                    recipient_email=user.email,
+                    monthly_budget=monthly_budget,
+                    provider_status="failed",
+                    failed_at=datetime.utcnow(),
+                    error_message=str(error),
+                )
+                persist_email_event_safely()
+            except Exception:
+                db.session.rollback()
             raise
 
     def send_recovery_email(user: User, recovery_code: str) -> None:
@@ -1649,7 +1741,7 @@ def create_app() -> Flask:
         try:
             send_welcome_email(user)
         except Exception:
-            pass
+            db.session.rollback()
 
         return jsonify({"message": "Account created successfully.", "user": serialize_user(user)}), 201
 

@@ -195,16 +195,18 @@ create index transactions_active_idx on transactions(monthly_budget_id, deleted_
 
 create table email_events (
   id uuid primary key default gen_random_uuid(),
-  user_id uuid references users(id) on delete set null,
-  event_type varchar(50) not null,
+  user_id uuid not null references users(id) on delete cascade,
+  event_type varchar(100) not null,
   recipient_email varchar(320) not null,
-  related_token_id uuid references auth_tokens(id) on delete set null,
-  related_budget_id uuid references monthly_budgets(id) on delete set null,
+  auth_token_id uuid references auth_tokens(id) on delete set null,
+  monthly_budget_id uuid references monthly_budgets(id) on delete set null,
   provider_message_id varchar(255),
+  provider_status varchar(100),
   sent_at timestamptz,
   failed_at timestamptz,
-  failure_reason text,
-  created_at timestamptz not null default now()
+  error_message text,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
 );
 
 create index email_events_user_type_idx on email_events(user_id, event_type, created_at desc);
