@@ -240,6 +240,39 @@ create table user_entitlements (
   constraint user_entitlements_reasonable_limit check (max_linked_accounts >= 0 and max_linked_accounts <= 10)
 );
 
+create table promo_codes (
+  id uuid primary key default gen_random_uuid(),
+  label varchar(120),
+  code_hash varchar(255) not null unique,
+  access_type varchar(30) not null default 'lifetime',
+  duration_months integer,
+  max_redemptions integer not null default 1,
+  times_redeemed integer not null default 0,
+  is_active boolean not null default true,
+  expires_at timestamptz,
+  created_by varchar(120),
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now(),
+  constraint promo_codes_redemption_limits check (max_redemptions >= 1),
+  constraint promo_codes_redemption_count check (times_redeemed >= 0 and times_redeemed <= max_redemptions)
+);
+
+create index promo_codes_active_expires_idx on promo_codes(is_active, expires_at);
+
+create table promo_code_redemptions (
+  id uuid primary key default gen_random_uuid(),
+  promo_code_id uuid not null references promo_codes(id) on delete cascade,
+  user_id uuid not null references users(id) on delete cascade,
+  granted_until timestamptz,
+  status varchar(30) not null default 'active',
+  redeemed_at timestamptz not null default now(),
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now(),
+  constraint uq_promo_code_redemption_user unique (promo_code_id, user_id)
+);
+
+create index promo_code_redemptions_user_status_idx on promo_code_redemptions(user_id, status);
+
 create table plaid_items (
   id uuid primary key default gen_random_uuid(),
   user_id uuid not null references users(id) on delete cascade,

@@ -50,6 +50,8 @@ def create_app() -> Flask:
         PayFrequency,
         PlaidAccount,
         PlaidItem,
+        PromoCode,
+        PromoCodeRedemption,
         PlaidTransactionRaw,
         PlaidTransactionReview,
         PlaidWebhookEvent,
@@ -351,6 +353,53 @@ def create_app() -> Flask:
         )
         db.session.commit()
         click.echo("Banking and billing schema synced.")
+
+    @app.cli.command("sync-promo-code-schema")
+    def sync_promo_code_schema_command():
+        raw_connection = db.engine.raw_connection()
+        try:
+            with raw_connection.cursor() as cursor:
+                cursor.execute(
+                    """
+                    create table if not exists promo_codes (
+                      id uuid primary key default gen_random_uuid(),
+                      label varchar(120),
+                      code_hash varchar(255) not null unique,
+                      access_type varchar(30) not null default 'lifetime',
+                      duration_months integer,
+                      max_redemptions integer not null default 1,
+                      times_redeemed integer not null default 0,
+                      is_active boolean not null default true,
+                      expires_at timestamptz,
+                      created_by varchar(120),
+                      created_at timestamptz not null default now(),
+                      updated_at timestamptz not null default now(),
+                      constraint promo_codes_redemption_limits check (max_redemptions >= 1),
+                      constraint promo_codes_redemption_count check (times_redeemed >= 0 and times_redeemed <= max_redemptions)
+                    );
+
+                    create index if not exists promo_codes_active_expires_idx on promo_codes(is_active, expires_at);
+
+                    create table if not exists promo_code_redemptions (
+                      id uuid primary key default gen_random_uuid(),
+                      promo_code_id uuid not null references promo_codes(id) on delete cascade,
+                      user_id uuid not null references users(id) on delete cascade,
+                      granted_until timestamptz,
+                      status varchar(30) not null default 'active',
+                      redeemed_at timestamptz not null default now(),
+                      created_at timestamptz not null default now(),
+                      updated_at timestamptz not null default now(),
+                      constraint uq_promo_code_redemption_user unique (promo_code_id, user_id)
+                    );
+
+                    create index if not exists promo_code_redemptions_user_status_idx on promo_code_redemptions(user_id, status);
+                    """
+                )
+            raw_connection.commit()
+        finally:
+            raw_connection.close()
+
+        click.echo("Promo code schema synced.")
 
     @app.cli.command("grant-premium")
     @click.option("--email", required=True, help="User email to grant premium access to.")

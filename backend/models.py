@@ -101,6 +101,7 @@ class User(TimestampMixin, db.Model):
     email_events: Mapped[list["EmailEvent"]] = relationship(back_populates="user", cascade="all, delete-orphan")
     subscriptions: Mapped[list["UserSubscription"]] = relationship(back_populates="user", cascade="all, delete-orphan")
     entitlement: Mapped["UserEntitlement | None"] = relationship(back_populates="user", cascade="all, delete-orphan", uselist=False)
+    promo_code_redemptions: Mapped[list["PromoCodeRedemption"]] = relationship(back_populates="user", cascade="all, delete-orphan")
     plaid_items: Mapped[list["PlaidItem"]] = relationship(back_populates="user", cascade="all, delete-orphan")
     plaid_accounts: Mapped[list["PlaidAccount"]] = relationship(back_populates="user", cascade="all, delete-orphan")
     plaid_transactions: Mapped[list["PlaidTransactionRaw"]] = relationship(back_populates="user", cascade="all, delete-orphan")
@@ -348,6 +349,46 @@ class UserEntitlement(db.Model):
     )
 
     user: Mapped["User"] = relationship(back_populates="entitlement")
+
+
+class PromoCode(TimestampMixin, db.Model):
+    __tablename__ = "promo_codes"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=generate_uuid)
+    label: Mapped[str | None] = mapped_column(String(120))
+    code_hash: Mapped[str] = mapped_column(String(255), unique=True, nullable=False)
+    access_type: Mapped[str] = mapped_column(String(30), nullable=False, default="lifetime")
+    duration_months: Mapped[int | None] = mapped_column(Integer)
+    max_redemptions: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
+    times_redeemed: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    is_active: Mapped[bool] = mapped_column(default=True, nullable=False)
+    expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    created_by: Mapped[str | None] = mapped_column(String(120))
+
+    redemptions: Mapped[list["PromoCodeRedemption"]] = relationship(back_populates="promo_code", cascade="all, delete-orphan")
+
+    __table_args__ = (
+        Index("ix_promo_codes_active_expires", "is_active", "expires_at"),
+    )
+
+
+class PromoCodeRedemption(TimestampMixin, db.Model):
+    __tablename__ = "promo_code_redemptions"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=generate_uuid)
+    promo_code_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("promo_codes.id", ondelete="CASCADE"), nullable=False)
+    user_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
+    granted_until: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    status: Mapped[str] = mapped_column(String(30), nullable=False, default="active")
+    redeemed_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+
+    promo_code: Mapped["PromoCode"] = relationship(back_populates="redemptions")
+    user: Mapped["User"] = relationship(back_populates="promo_code_redemptions")
+
+    __table_args__ = (
+        Index("ix_promo_redemptions_user_status", "user_id", "status"),
+        UniqueConstraint("promo_code_id", "user_id", name="uq_promo_code_redemption_user"),
+    )
 
 
 class PlaidItem(TimestampMixin, db.Model):
