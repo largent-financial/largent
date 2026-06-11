@@ -699,17 +699,42 @@
     <div class="modal-card profile-modal-card card" role="dialog" aria-modal="true" aria-labelledby="profile-modal-title">
       <button class="modal-close" type="button" id="profile-modal-close" aria-label="Close account menu">×</button>
       <div class="profile-modal-layout">
-        <aside class="profile-nav" aria-label="Account navigation">
-          <button class="profile-nav-item profile-nav-item-active" type="button" data-profile-nav="account">Account</button>
-          <button class="profile-nav-item" type="button" data-profile-nav="billing">Billing</button>
-          <button class="profile-nav-item" type="button" data-profile-nav="banking">Bank Connections</button>
-        </aside>
+        <nav class="profile-nav" aria-label="Account navigation">
+          <button class="profile-nav-item profile-nav-item-active" type="button" data-profile-nav="account" aria-label="Account">
+            <span class="profile-nav-icon" aria-hidden="true">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M12 12a4 4 0 1 0 0-8 4 4 0 0 0 0 8Z"></path>
+                <path d="M4.5 20.5a7.5 7.5 0 0 1 15 0"></path>
+              </svg>
+            </span>
+            <span class="sr-only">Account</span>
+          </button>
+          <button class="profile-nav-item" type="button" data-profile-nav="billing" aria-label="Billing">
+            <span class="profile-nav-icon profile-nav-icon-dollar" aria-hidden="true">$</span>
+            <span class="sr-only">Billing</span>
+          </button>
+          <button class="profile-nav-item" type="button" data-profile-nav="banking" aria-label="Bank Connections">
+            <span class="profile-nav-icon" aria-hidden="true">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.85" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M3 9.5 12 4l9 5.5"></path>
+                <path d="M5 10h14"></path>
+                <path d="M6.5 10v7.5"></path>
+                <path d="M10.5 10v7.5"></path>
+                <path d="M14.5 10v7.5"></path>
+                <path d="M18.5 10v7.5"></path>
+                <path d="M4 20h16"></path>
+              </svg>
+            </span>
+            <span class="sr-only">Bank Connections</span>
+          </button>
+        </nav>
 
         <div class="profile-panel-wrap">
           <section class="profile-panel profile-panel-active" data-profile-panel="account" aria-labelledby="profile-modal-title">
             <div class="profile-panel-head">
-              <p class="eyebrow">Account</p>
-              <h3 id="profile-modal-title">Your identity and login details.</h3>
+              <p class="eyebrow">Profile</p>
+              <h3 id="profile-modal-title">Account</h3>
+              <p class="profile-panel-subtitle">Your identity and login details.</p>
               <p>Update your name, email, and email preferences, or request a password reset code.</p>
             </div>
 
@@ -754,8 +779,9 @@
 
           <section class="profile-panel profile-panel-premium" data-profile-panel="billing" aria-labelledby="profile-billing-title">
             <div class="profile-panel-head">
-              <p class="eyebrow">Billing</p>
-              <h3 id="profile-billing-title">Premium and subscription details.</h3>
+              <p class="eyebrow">Premium</p>
+              <h3 id="profile-billing-title">Billing</h3>
+              <p class="profile-panel-subtitle">Premium and subscription details.</p>
               <p>Premium will power bank sync and future advanced automation.</p>
             </div>
 
@@ -769,8 +795,9 @@
 
           <section class="profile-panel" data-profile-panel="banking" aria-labelledby="profile-banking-title">
             <div class="profile-panel-head">
-              <p class="eyebrow">Bank Connections</p>
-              <h3 id="profile-banking-title">Manage connected accounts.</h3>
+              <p class="eyebrow">Connections</p>
+              <h3 id="profile-banking-title">Bank Connections</h3>
+              <p class="profile-panel-subtitle">Manage connected accounts.</p>
               <p>Review what’s linked, then swap or add eligible accounts.</p>
             </div>
 

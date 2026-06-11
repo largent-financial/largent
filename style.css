@@ -893,41 +893,69 @@ h3 {
 
 .profile-modal-layout {
   display: grid;
-  grid-template-columns: 220px minmax(0, 1fr);
-  gap: 18px;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 16px;
   min-height: 0;
   height: 100%;
 }
 
 .profile-nav {
   display: grid;
-  gap: 8px;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
   align-content: start;
-  padding-right: 2px;
-  overflow: auto;
+  overflow: visible;
 }
 
 .profile-nav-item {
-  min-height: 46px;
-  padding: 12px 14px;
-  border-radius: 14px;
+  min-height: 56px;
+  padding: 12px;
+  border-radius: 18px;
   border: 1px solid var(--border);
   background: #fff;
   color: var(--text);
-  text-align: left;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   font-weight: 700;
+  transition:
+    border-color 180ms ease,
+    background-color 180ms ease,
+    transform 180ms ease,
+    color 180ms ease;
 }
 
 .profile-nav-item:hover,
 .profile-nav-item:focus-visible {
   border-color: rgba(53, 188, 64, 0.22);
   background: #f5fbf5;
+  transform: translateY(-1px);
 }
 
 .profile-nav-item-active {
   border-color: rgba(53, 188, 64, 0.22);
   background: linear-gradient(180deg, rgba(244, 252, 244, 0.98), rgba(233, 248, 234, 0.96));
   color: var(--primary-deep);
+  box-shadow: 0 10px 22px rgba(53, 188, 64, 0.08);
+}
+
+.profile-nav-icon {
+  width: 24px;
+  height: 24px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.profile-nav-icon svg {
+  width: 100%;
+  height: 100%;
+}
+
+.profile-nav-icon-dollar {
+  font-size: 1.45rem;
+  line-height: 1;
+  font-weight: 800;
 }
 
 .profile-panel-wrap {
@@ -941,19 +969,37 @@ h3 {
   display: none;
   gap: 18px;
   align-content: start;
+  width: 100%;
 }
 
 .profile-panel-active {
   display: grid;
 }
 
+.profile-panel-head {
+  display: grid;
+  gap: 8px;
+}
+
 .profile-panel-head h3 {
+  margin: 0;
+  font-size: clamp(2rem, 3.2vw, 2.8rem);
+  letter-spacing: -0.05em;
+}
+
+.profile-panel-head p {
   margin: 0;
 }
 
+.profile-panel-subtitle {
+  font-size: 1.06rem;
+  font-weight: 700;
+  color: var(--text);
+}
+
 .profile-panel-head p:last-child {
-  margin: 8px 0 0;
   color: var(--muted);
+  max-width: 62ch;
 }
 
 .profile-form,
@@ -962,6 +1008,7 @@ h3 {
 .profile-bank-list {
   display: grid;
   gap: 12px;
+  width: 100%;
 }
 
 .field-grid-span-2 {
@@ -986,6 +1033,10 @@ h3 {
   border: 1px solid var(--border);
   border-radius: var(--radius-md);
   background: linear-gradient(180deg, rgba(255, 255, 255, 0.98), rgba(247, 251, 247, 0.92));
+}
+
+.profile-bank-summary {
+  width: 100%;
 }
 
 .settings-row strong,
@@ -2725,9 +2776,8 @@ h3 {
   }
 
   .profile-nav {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
+    grid-template-columns: repeat(3, minmax(0, 1fr));
     overflow: visible;
-    padding-right: 0;
   }
 
   .profile-panel-wrap {
@@ -3012,7 +3062,7 @@ h3 {
   }
 
   .profile-nav {
-    grid-template-columns: 1fr;
+    gap: 8px;
   }
 
   .modal-shell-profile {
@@ -3029,6 +3079,10 @@ h3 {
   .profile-form-actions,
   .premium-actions {
     flex-direction: column;
+  }
+
+  .profile-panel-head h3 {
+    font-size: 1.8rem;
   }
 
   .settings-row,
