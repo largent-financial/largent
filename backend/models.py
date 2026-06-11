@@ -381,6 +381,7 @@ class PromoCodeRedemption(TimestampMixin, db.Model):
     granted_until: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     status: Mapped[str] = mapped_column(String(30), nullable=False, default="active")
     redeemed_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+    expiry_reminder_sent_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
     promo_code: Mapped["PromoCode"] = relationship(back_populates="redemptions")
     user: Mapped["User"] = relationship(back_populates="promo_code_redemptions")

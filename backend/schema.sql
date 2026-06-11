@@ -266,6 +266,7 @@ create table promo_code_redemptions (
   granted_until timestamptz,
   status varchar(30) not null default 'active',
   redeemed_at timestamptz not null default now(),
+  expiry_reminder_sent_at timestamptz,
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now(),
   constraint uq_promo_code_redemption_user unique (promo_code_id, user_id)

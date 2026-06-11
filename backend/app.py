@@ -1,9 +1,10 @@
 from pathlib import Path
 
 import base64
+import csv
 import click
 from cryptography.fernet import Fernet
-from datetime import datetime
+from datetime import datetime, timedelta
 from email.message import EmailMessage
 import hashlib
 import hmac
@@ -387,6 +388,7 @@ def create_app() -> Flask:
                       granted_until timestamptz,
                       status varchar(30) not null default 'active',
                       redeemed_at timestamptz not null default now(),
+                      expiry_reminder_sent_at timestamptz,
                       created_at timestamptz not null default now(),
                       updated_at timestamptz not null default now(),
                       constraint uq_promo_code_redemption_user unique (promo_code_id, user_id)
@@ -395,11 +397,48 @@ def create_app() -> Flask:
                     create index if not exists promo_code_redemptions_user_status_idx on promo_code_redemptions(user_id, status);
                     """
                 )
+                cursor.execute(
+                    """
+                    alter table promo_code_redemptions
+                    add column if not exists expiry_reminder_sent_at timestamptz
+                    """
+                )
             raw_connection.commit()
         finally:
             raw_connection.close()
 
         click.echo("Promo code schema synced.")
+
+    @app.cli.command("import-promo-codes")
+    @click.option("--csv-path", default=str(ROOT_DIR / "docs" / "promo-codes.csv"), help="CSV path with plain_code and sha256_hash columns.")
+    @click.option("--label", default="Founding promo", help="Label to attach to imported promo codes.")
+    def import_promo_codes_command(csv_path: str, label: str):
+        imported_count = 0
+        with open(csv_path, newline="", encoding="utf-8") as handle:
+            reader = csv.DictReader(handle)
+            for row in reader:
+                code_hash = (row.get("sha256_hash") or "").strip()
+                if not code_hash:
+                    continue
+                existing = db.session.execute(db.select(PromoCode).filter_by(code_hash=code_hash)).scalar_one_or_none()
+                if existing:
+                    continue
+                db.session.add(
+                    PromoCode(
+                        label=label,
+                        code_hash=code_hash,
+                        access_type="months",
+                        duration_months=1,
+                        max_redemptions=1,
+                        times_redeemed=0,
+                        is_active=True,
+                        created_by="system_import",
+                    )
+                )
+                imported_count += 1
+
+        db.session.commit()
+        click.echo(f"Imported {imported_count} promo codes.")
 
     @app.cli.command("grant-premium")
     @click.option("--email", required=True, help="User email to grant premium access to.")
@@ -459,6 +498,19 @@ def create_app() -> Flask:
             "bankSyncEnabled": entitlement.bank_sync_enabled,
             "maxLinkedAccounts": entitlement.max_linked_accounts,
             "source": entitlement.source,
+        }
+
+    def serialize_promo_redemption(redemption: PromoCodeRedemption | None):
+        if not redemption:
+            return None
+
+        return {
+            "id": str(redemption.id),
+            "promoCodeId": str(redemption.promo_code_id),
+            "status": redemption.status,
+            "grantedUntil": redemption.granted_until.isoformat() if redemption.granted_until else None,
+            "redeemedAt": redemption.redeemed_at.isoformat() if redemption.redeemed_at else None,
+            "expiryReminderSentAt": redemption.expiry_reminder_sent_at.isoformat() if redemption.expiry_reminder_sent_at else None,
         }
 
     def serialize_plaid_account(account: PlaidAccount):
@@ -885,6 +937,105 @@ def create_app() -> Flask:
             .first()
         )
 
+    def get_active_promo_redemption(user: User):
+        return (
+            db.session.execute(
+                db.select(PromoCodeRedemption)
+                .filter_by(user_id=user.id, status="active")
+                .order_by(PromoCodeRedemption.redeemed_at.desc())
+            )
+            .scalars()
+            .first()
+        )
+
+    def normalize_promo_code(raw_code: str | None) -> str:
+        return "-".join((raw_code or "").strip().upper().split())
+
+    def hash_promo_code(code: str) -> str:
+        return hashlib.sha256(code.encode("utf-8")).hexdigest()
+
+    def get_promo_code_by_plaintext(code: str) -> PromoCode | None:
+        code_hash = hash_promo_code(normalize_promo_code(code))
+        return db.session.execute(db.select(PromoCode).filter_by(code_hash=code_hash)).scalar_one_or_none()
+
+    def expire_promo_redemption(redemption: PromoCodeRedemption) -> None:
+        if redemption.status != "expired":
+            redemption.status = "expired"
+
+    def refresh_user_premium_access(user: User):
+        now = datetime.utcnow()
+        subscription = get_active_subscription(user)
+        active_promo = get_active_promo_redemption(user)
+
+        if active_promo and active_promo.granted_until and active_promo.granted_until <= now:
+            expire_promo_redemption(active_promo)
+            active_promo = None
+
+        if subscription and stripe_subscription_is_active(subscription.status):
+            entitlement = update_user_entitlement_from_subscription(user, subscription)
+            return entitlement, subscription, active_promo
+
+        entitlement = get_user_entitlement(user, create_if_missing=True)
+        if active_promo:
+            entitlement.premium_access = True
+            entitlement.bank_sync_enabled = True
+            entitlement.max_linked_accounts = 2
+            entitlement.source = "promo_code"
+        else:
+            entitlement.premium_access = False
+            entitlement.bank_sync_enabled = False
+            entitlement.max_linked_accounts = 2
+            entitlement.source = "system"
+        return entitlement, subscription, active_promo
+
+    def redeem_promo_code_for_user(user: User, raw_code: str):
+        normalized_code = normalize_promo_code(raw_code)
+        if not normalized_code:
+            return None, "Enter a promo code to continue."
+
+        entitlement, subscription, active_promo = refresh_user_premium_access(user)
+        if subscription and stripe_subscription_is_active(subscription.status):
+            return None, "This account already has paid Premium. Promo codes are for free-mode accounts."
+        if active_promo:
+            return None, "This account already has an active promo-based Premium month."
+
+        promo_code = get_promo_code_by_plaintext(normalized_code)
+        if not promo_code:
+            return None, "That promo code was not recognized."
+        if not promo_code.is_active:
+            return None, "That promo code is no longer active."
+        if promo_code.expires_at and promo_code.expires_at <= datetime.utcnow():
+            return None, "That promo code has expired."
+        if promo_code.times_redeemed >= promo_code.max_redemptions:
+            return None, "That promo code has already reached its redemption limit."
+
+        existing_redemption = (
+            db.session.execute(
+                db.select(PromoCodeRedemption).filter_by(user_id=user.id, promo_code_id=promo_code.id)
+            )
+            .scalars()
+            .first()
+        )
+        if existing_redemption:
+            return None, "You have already redeemed this promo code."
+
+        granted_until = datetime.utcnow() + timedelta(days=30)
+        redemption = PromoCodeRedemption(
+            promo_code_id=promo_code.id,
+            user_id=user.id,
+            granted_until=granted_until,
+            status="active",
+        )
+        db.session.add(redemption)
+        promo_code.times_redeemed += 1
+
+        entitlement = get_user_entitlement(user, create_if_missing=True)
+        entitlement.premium_access = True
+        entitlement.bank_sync_enabled = True
+        entitlement.max_linked_accounts = 2
+        entitlement.source = "promo_code"
+        return redemption, None
+
     def get_plaid_items_for_user(user: User):
         return (
             db.session.execute(
@@ -1140,13 +1291,18 @@ def create_app() -> Flask:
                 }
             )
 
+        entitlement, subscription, promo_redemption = refresh_user_premium_access(user)
         income_profile = get_current_income_profile(user)
         monthly_budget = get_current_month_budget(user)
+        db.session.commit()
 
         return jsonify(
             {
                 "authenticated": True,
                 "user": serialize_user(user),
+                "entitlement": serialize_entitlement(entitlement),
+                "subscription": serialize_subscription(subscription),
+                "promoRedemption": serialize_promo_redemption(promo_redemption),
                 "incomeProfile": serialize_income_profile(income_profile),
                 "monthlyBudget": serialize_budget(monthly_budget),
                 "hasCompletedOnboarding": bool(income_profile and monthly_budget),
@@ -1159,8 +1315,7 @@ def create_app() -> Flask:
         if not user:
             return jsonify({"message": "You must be logged in to view premium status."}), 401
 
-        entitlement = get_user_entitlement(user, create_if_missing=True)
-        subscription = get_active_subscription(user)
+        entitlement, subscription, promo_redemption = refresh_user_premium_access(user)
         db.session.commit()
 
         return jsonify(
@@ -1168,6 +1323,7 @@ def create_app() -> Flask:
                 "user": serialize_user(user),
                 "entitlement": serialize_entitlement(entitlement),
                 "subscription": serialize_subscription(subscription),
+                "promoRedemption": serialize_promo_redemption(promo_redemption),
                 "stripe": {
                     "configured": bool(app.config.get("STRIPE_SECRET_KEY") and app.config.get("STRIPE_PRICE_ID")),
                     "publishableKey": app.config.get("STRIPE_PUBLISHABLE_KEY"),
@@ -1284,7 +1440,7 @@ def create_app() -> Flask:
         if not user:
             return jsonify({"message": "You must be logged in to view bank sync status."}), 401
 
-        entitlement = get_user_entitlement(user, create_if_missing=True)
+        entitlement, _, promo_redemption = refresh_user_premium_access(user)
         items = get_plaid_items_for_user(user)
         active_accounts_count = get_active_plaid_accounts_count(user)
         db.session.commit()
@@ -1292,6 +1448,7 @@ def create_app() -> Flask:
         return jsonify(
             {
                 "entitlement": serialize_entitlement(entitlement),
+                "promoRedemption": serialize_promo_redemption(promo_redemption),
                 "summary": {
                     "activeConnectedAccounts": active_accounts_count,
                     "maxLinkedAccounts": entitlement.max_linked_accounts if entitlement else 2,
@@ -2013,6 +2170,24 @@ def create_app() -> Flask:
             preference_key="monthly_summary",
         )
 
+    def send_promo_expiry_reminder_email(user: User, redemption: PromoCodeRedemption) -> bool:
+        granted_until = redemption.granted_until.strftime("%B %d, %Y") if redemption.granted_until else "soon"
+        return send_managed_email(
+            user=user,
+            subject="Your Largent Premium access ends in 2 days",
+            content=(
+                f"Hi {user.first_name},\n\n"
+                "Just a heads-up — your promo-based Largent Premium access is scheduled to end in about 2 days.\n\n"
+                f"Premium access ends on {granted_until}.\n\n"
+                "If you’d like to keep bank sync and Premium features turned on, open Largent and upgrade from the Billing section before your promo month ends.\n\n"
+                "If not, no action is needed — your account will simply return to free mode.\n\n"
+                "Thanks for using Largent,\n"
+                "The Largent Team"
+            ),
+            event_type="promo_expiry_reminder",
+            force_send=True,
+        )
+
     @app.cli.command("preview-monthly-summary-email")
     @click.option("--email", required=True, help="User email to preview the summary for.")
     def preview_monthly_summary_email_command(email: str):
@@ -2039,6 +2214,42 @@ def create_app() -> Flask:
         click.echo(f"Subject: {subject}\n")
         click.echo(content)
 
+    @app.cli.command("send-promo-expiry-reminders")
+    def send_promo_expiry_reminders_command():
+        now = datetime.utcnow()
+        window_start = now + timedelta(days=1)
+        window_end = now + timedelta(days=3)
+        redemptions = (
+            db.session.execute(
+                db.select(PromoCodeRedemption)
+                .filter(
+                    PromoCodeRedemption.status == "active",
+                    PromoCodeRedemption.granted_until.is_not(None),
+                    PromoCodeRedemption.expiry_reminder_sent_at.is_(None),
+                    PromoCodeRedemption.granted_until >= window_start,
+                    PromoCodeRedemption.granted_until <= window_end,
+                )
+                .order_by(PromoCodeRedemption.granted_until.asc())
+            )
+            .scalars()
+            .all()
+        )
+
+        sent_count = 0
+        for redemption in redemptions:
+            user = db.session.get(User, redemption.user_id)
+            if not user:
+                continue
+            try:
+                send_promo_expiry_reminder_email(user, redemption)
+                redemption.expiry_reminder_sent_at = datetime.utcnow()
+                db.session.commit()
+                sent_count += 1
+            except Exception:
+                db.session.rollback()
+
+        click.echo(f"Sent {sent_count} promo expiry reminders.")
+
     def get_current_user():
         user_id = session.get("user_id")
         if not user_id:
@@ -2057,6 +2268,7 @@ def create_app() -> Flask:
         email = (payload.get("email") or "").strip().lower()
         password = payload.get("password") or ""
         confirm_password = payload.get("confirmPassword") or ""
+        promo_code = payload.get("promoCode") or ""
 
         if not first_name or not last_name or not email or not password or not confirm_password:
             return jsonify({"message": "Please complete every field to create your account."}), 400
@@ -2086,12 +2298,28 @@ def create_app() -> Flask:
         session["user_id"] = str(user.id)
         session.permanent = True
 
+        promo_payload = None
+        if promo_code.strip():
+            redemption, promo_error = redeem_promo_code_for_user(user, promo_code)
+            db.session.commit()
+            if redemption:
+                promo_payload = {
+                    "applied": True,
+                    "message": "Promo code applied. Premium is active for 1 month.",
+                    "redemption": serialize_promo_redemption(redemption),
+                }
+            else:
+                promo_payload = {
+                    "applied": False,
+                    "message": promo_error,
+                }
+
         try:
             send_welcome_email(user)
         except Exception:
             db.session.rollback()
 
-        return jsonify({"message": "Account created successfully.", "user": serialize_user(user)}), 201
+        return jsonify({"message": "Account created successfully.", "user": serialize_user(user), "promo": promo_payload}), 201
 
     @app.post("/api/auth/login")
     def login():
@@ -2106,6 +2334,7 @@ def create_app() -> Flask:
         if not user or not check_password_hash(user.password_hash, password):
             return jsonify({"message": "We could not find a matching email and password."}), 401
 
+        refresh_user_premium_access(user)
         user.last_login_at = datetime.utcnow()
         db.session.commit()
 
@@ -2117,6 +2346,32 @@ def create_app() -> Flask:
                 "message": "Logged in successfully.",
                 "user": serialize_user(user),
                 "hasCompletedOnboarding": bool(get_current_income_profile(user) and get_current_month_budget(user)),
+            }
+        )
+
+    @app.post("/api/promo-code/redeem")
+    def redeem_promo_code():
+        user = get_current_user()
+        if not user:
+            return jsonify({"message": "You must be logged in to apply a promo code."}), 401
+
+        payload = request.get_json(silent=True) or {}
+        promo_code = payload.get("promoCode") or ""
+        redemption, promo_error = redeem_promo_code_for_user(user, promo_code)
+        if not redemption:
+            db.session.rollback()
+            return jsonify({"message": promo_error}), 400
+
+        db.session.commit()
+        entitlement, subscription, active_promo = refresh_user_premium_access(user)
+        db.session.commit()
+        return jsonify(
+            {
+                "message": "Promo code applied. Premium is active for 1 month.",
+                "entitlement": serialize_entitlement(entitlement),
+                "subscription": serialize_subscription(subscription),
+                "promoRedemption": serialize_promo_redemption(active_promo),
+                "user": serialize_user(user),
             }
         )
 

@@ -648,6 +648,10 @@
               </button>
             </div>
           </label>
+          <label class="field">
+            <span>Promo code <em class="field-optional">(optional)</em></span>
+            <input type="text" name="promoCode" placeholder="LGT-XXXX-XXXX-XXXX" autocomplete="off" />
+          </label>
           <p class="auth-feedback" id="auth-signup-feedback" role="status" aria-live="polite"></p>
           <button class="button button-primary button-full" type="submit">Create Account</button>
         </form>
@@ -805,6 +809,20 @@
             </div>
 
             <div class="premium-summary" id="profile-billing-summary"></div>
+            <div class="promo-redeem-card">
+              <div class="promo-redeem-copy">
+                <strong>Have a promo code?</strong>
+                <span>Apply a 1-month Premium code without adding a card.</span>
+              </div>
+              <div class="promo-redeem-form">
+                <label class="field field-grid-span-2">
+                  <span>Promo code</span>
+                  <input type="text" id="profile-promo-code-input" placeholder="LGT-XXXX-XXXX-XXXX" autocomplete="off" />
+                </label>
+                <button class="button button-secondary" type="button" id="profile-promo-code-button">Apply code</button>
+              </div>
+              <p class="auth-feedback" id="profile-promo-code-feedback" role="status" aria-live="polite"></p>
+            </div>
             <div class="premium-actions">
               <button class="button button-primary" type="button" id="profile-upgrade-button">Upgrade plan</button>
               <button class="button button-secondary" type="button" id="profile-manage-premium-button">Remove premium</button>

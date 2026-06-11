@@ -15,6 +15,9 @@ const profileAccountSaveButton = document.getElementById('profile-account-save-b
 const profileResetPasswordButton = document.getElementById('profile-reset-password-button');
 const profileBillingSummary = document.getElementById('profile-billing-summary');
 const profileBillingFeedback = document.getElementById('profile-billing-feedback');
+const profilePromoCodeInput = document.getElementById('profile-promo-code-input');
+const profilePromoCodeButton = document.getElementById('profile-promo-code-button');
+const profilePromoCodeFeedback = document.getElementById('profile-promo-code-feedback');
 const profileUpgradeButton = document.getElementById('profile-upgrade-button');
 const profileManagePremiumButton = document.getElementById('profile-manage-premium-button');
 const profileBankSummary = document.getElementById('profile-bank-summary');
@@ -186,6 +189,7 @@ let profileView = 'account';
 let profileState = {
   loading: false,
   savingAccount: false,
+  redeemingPromo: false,
   premium: null,
   pendingAccountPayload: null
 };
@@ -1513,6 +1517,10 @@ function isPremiumActive() {
   return false;
 }
 
+function hasPaidPremiumSubscription() {
+  return Boolean(profileState.premium?.subscription && isPremiumActive());
+}
+
 function renderPremiumUpsellCard() {
   if (!premiumUpsellCard) {
     return;
@@ -1536,7 +1544,10 @@ function renderPremiumActiveCard() {
   premiumActiveCard.hidden = !shouldShow;
 
   if (premiumActivePill) {
-    premiumActivePill.textContent = 'Unlocked';
+    premiumActivePill.textContent = hasPaidPremiumSubscription() ? 'Unlocked' : 'Promo active';
+  }
+  if (premiumManageDashboardButton) {
+    premiumManageDashboardButton.textContent = hasPaidPremiumSubscription() ? 'Manage billing' : 'Upgrade before promo ends';
   }
 }
 
@@ -2468,7 +2479,10 @@ function renderProfileBillingPanel() {
 
   const entitlement = profileState.premium?.entitlement;
   const subscription = profileState.premium?.subscription;
+  const promoRedemption = profileState.premium?.promoRedemption;
   const premiumActive = Boolean(entitlement?.premiumAccess);
+  const paidPremiumActive = Boolean(subscription && premiumActive);
+  const promoPremiumActive = Boolean(!subscription && premiumActive && entitlement?.source === 'promo_code');
   const planLabel = premiumActive ? 'Premium' : 'Free';
   const statusLabel = subscription?.status
     ? subscription.status.replaceAll('_', ' ').replace(/\b\w/g, character => character.toUpperCase())
@@ -2489,17 +2503,33 @@ function renderProfileBillingPanel() {
       <div><strong>Bank sync</strong><span>${entitlement?.bankSyncEnabled ? 'Enabled' : 'Locked on free plan'}</span></div>
       <div><strong>Connected accounts</strong><span>Up to ${entitlement?.maxLinkedAccounts ?? 2}</span></div>
       <div><strong>Billing cycle</strong><span>${premiumActive ? 'Monthly renewal' : 'Upgrade to unlock'}</span></div>
-      <div><strong>Next renewal</strong><span>${premiumActive ? renewalLabel : '—'}</span></div>
+      <div><strong>Next renewal</strong><span>${premiumActive && subscription ? renewalLabel : promoRedemption?.grantedUntil ? formatHistoryDate(promoRedemption.grantedUntil) : '—'}</span></div>
     </div>
   `;
 
+  if (profilePromoCodeInput) {
+    const promoIsActive = Boolean(promoRedemption?.grantedUntil && promoPremiumActive);
+    profilePromoCodeInput.disabled = promoIsActive || profileState.redeemingPromo || paidPremiumActive;
+    if (promoIsActive) {
+      profilePromoCodeInput.value = '';
+      profilePromoCodeInput.placeholder = `Promo active until ${formatHistoryDate(promoRedemption.grantedUntil)}`;
+    } else {
+      profilePromoCodeInput.placeholder = 'LGT-XXXX-XXXX-XXXX';
+    }
+  }
+  if (profilePromoCodeButton) {
+    const promoIsLocked = Boolean(paidPremiumActive || (promoRedemption && promoPremiumActive));
+    profilePromoCodeButton.disabled = promoIsLocked || profileState.redeemingPromo;
+    profilePromoCodeButton.textContent = promoIsLocked ? 'Promo active' : profileState.redeemingPromo ? 'Applying…' : 'Apply code';
+  }
+
   if (profileUpgradeButton) {
-    profileUpgradeButton.textContent = premiumActive ? 'Premium active' : 'Upgrade plan';
-    profileUpgradeButton.disabled = premiumActive;
+    profileUpgradeButton.textContent = paidPremiumActive ? 'Premium active' : promoPremiumActive ? 'Upgrade to continue' : 'Upgrade plan';
+    profileUpgradeButton.disabled = paidPremiumActive;
   }
   if (profileManagePremiumButton) {
-    profileManagePremiumButton.textContent = premiumActive ? 'Manage billing' : 'No premium to manage';
-    profileManagePremiumButton.disabled = !premiumActive;
+    profileManagePremiumButton.textContent = paidPremiumActive ? 'Manage billing' : promoPremiumActive ? 'Promo active' : 'No premium to manage';
+    profileManagePremiumButton.disabled = !paidPremiumActive;
   }
 }
 
@@ -2578,6 +2608,7 @@ async function openProfileModal(nextView = 'account') {
   setProfileFeedback(profileBillingFeedback, '');
   setProfileFeedback(profileAccountFeedback, '');
   setProfileFeedback(profileBankingFeedback, '');
+  setProfileFeedback(profilePromoCodeFeedback, '');
   renderProfileAccountPanel();
   renderProfileBankingPanel();
   openModal(profileModal);
@@ -2726,6 +2757,14 @@ async function loadAppState() {
   const payload = await apiRequest('/api/app-state');
   saveCurrentUser(payload.user || null);
   syncPersistedState(payload);
+  if (payload.authenticated) {
+    profileState.premium = {
+      ...(profileState.premium || {}),
+      entitlement: payload.entitlement || profileState.premium?.entitlement || null,
+      subscription: payload.subscription || profileState.premium?.subscription || null,
+      promoRedemption: payload.promoRedemption || null
+    };
+  }
 
   if (payload.incomeProfile) {
     hydrateOnboardingFromProfile(payload.incomeProfile);
@@ -3106,6 +3145,7 @@ async function handleSignupSubmit(form) {
   const email = form.elements.email.value.trim().toLowerCase();
   const password = form.elements.password.value;
   const confirmPassword = form.elements.confirmPassword.value;
+  const promoCode = form.elements.promoCode?.value.trim() || '';
 
   if (!firstName || !lastName || !email || !password || !confirmPassword) {
     setAuthFeedback(authSignupFeedback, 'Please complete every field to create your account.', 'error');
@@ -3125,10 +3165,13 @@ async function handleSignupSubmit(form) {
   try {
     const payload = await apiRequest('/api/auth/signup', {
       method: 'POST',
-      body: { firstName, lastName, email, password, confirmPassword }
+      body: { firstName, lastName, email, password, confirmPassword, promoCode }
     });
     saveCurrentUser(payload.user);
-    setAuthFeedback(authSignupFeedback, payload.message || 'Account created successfully.', 'success');
+    const signupMessage = payload.promo?.applied
+      ? payload.promo.message
+      : payload.message || 'Account created successfully.';
+    setAuthFeedback(authSignupFeedback, signupMessage, 'success');
     return true;
   } catch (error) {
     setAuthFeedback(authSignupFeedback, error.message, 'error');
@@ -3136,6 +3179,53 @@ async function handleSignupSubmit(form) {
       setAuthMode('login');
     }
     return false;
+  }
+}
+
+async function handlePromoCodeRedeem() {
+  if (!profilePromoCodeInput || profileState.redeemingPromo) {
+    return;
+  }
+
+  const promoCode = profilePromoCodeInput.value.trim();
+  if (!promoCode) {
+    setProfileFeedback(profilePromoCodeFeedback, 'Enter a promo code to continue.', 'error');
+    return;
+  }
+
+  profileState.redeemingPromo = true;
+  renderProfileBillingPanel();
+  setProfileFeedback(profilePromoCodeFeedback, 'Applying promo code…');
+
+  try {
+    const payload = await apiRequest('/api/promo-code/redeem', {
+      method: 'POST',
+      body: { promoCode }
+    });
+    if (payload.user) {
+      saveCurrentUser(payload.user);
+    }
+    profileState.premium = {
+      ...profileState.premium,
+      entitlement: payload.entitlement || profileState.premium?.entitlement,
+      subscription: payload.subscription || null,
+      promoRedemption: payload.promoRedemption || null
+    };
+    await loadPlaidStatus({ silent: true });
+    if (profilePromoCodeInput) {
+      profilePromoCodeInput.value = '';
+    }
+    renderPremiumActiveCard();
+    renderPremiumUpsellCard();
+    renderProfileBillingPanel();
+    renderPlaidSection();
+    renderProfileBankingPanel();
+    setProfileFeedback(profilePromoCodeFeedback, payload.message || 'Promo code applied.', 'success');
+  } catch (error) {
+    setProfileFeedback(profilePromoCodeFeedback, error.message || 'We could not apply that promo code.', 'error');
+  } finally {
+    profileState.redeemingPromo = false;
+    renderProfileBillingPanel();
   }
 }
 
@@ -3231,7 +3321,9 @@ function formatHistoryDate(value) {
     return 'No date';
   }
 
-  const parsed = new Date(`${value}T12:00:00`);
+  const parsed = value.includes('T')
+    ? new Date(value)
+    : new Date(`${value}T12:00:00`);
   if (Number.isNaN(parsed.getTime())) {
     return value;
   }
@@ -3627,6 +3719,13 @@ profileUpgradeButton?.addEventListener('click', () => {
 profileManagePremiumButton?.addEventListener('click', () => {
   openStripeBillingPortal();
 });
+profilePromoCodeButton?.addEventListener('click', handlePromoCodeRedeem);
+profilePromoCodeInput?.addEventListener('keydown', event => {
+  if (event.key === 'Enter') {
+    event.preventDefault();
+    handlePromoCodeRedeem();
+  }
+});
 profileOpenDashboardButton?.addEventListener('click', () => {
   closeProfileModal();
   showScreen('dashboard');
@@ -3644,7 +3743,11 @@ premiumUpsellButton?.addEventListener('click', () => {
   beginStripeCheckout();
 });
 premiumManageDashboardButton?.addEventListener('click', () => {
-  openStripeBillingPortal();
+  if (hasPaidPremiumSubscription()) {
+    openStripeBillingPortal();
+    return;
+  }
+  openPremiumBillingExperience('Your promo month is active. Upgrade here any time before it ends if you want to keep Premium on.');
 });
 plaidConnectButton?.addEventListener('click', startPlaidLinkFlow);
 plaidConnectedList?.addEventListener('click', event => {
