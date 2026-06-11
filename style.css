@@ -1067,6 +1067,9 @@ h3 {
   background: linear-gradient(180deg, #101312, #171c19);
   color: #fff;
   border: 1px solid rgba(98, 222, 106, 0.16);
+  box-shadow:
+    0 1px 0 rgba(255, 255, 255, 0.03) inset,
+    0 14px 30px rgba(15, 17, 16, 0.18);
 }
 
 .premium-label {
@@ -1092,10 +1095,22 @@ h3 {
   align-items: center;
   justify-content: space-between;
   gap: 16px;
+  padding: 10px 0;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+.premium-feature-list div:first-child {
+  padding-top: 0;
+}
+
+.premium-feature-list div:last-child {
+  padding-bottom: 0;
+  border-bottom: 0;
 }
 
 .premium-feature-list span {
   color: rgba(232, 243, 232, 0.76);
+  text-align: right;
 }
 
 .profile-bank-summary-row {
@@ -1911,6 +1926,7 @@ h3 {
 
 .transaction-card,
 .overview-card,
+.premium-active-card,
 .premium-upsell-card,
 .plaid-card,
 .review-card,
@@ -1955,6 +1971,7 @@ h3 {
   align-items: center;
 }
 
+.premium-active-card,
 .premium-upsell-card,
 .plaid-card,
 .review-card {
@@ -1967,12 +1984,15 @@ h3 {
     0 4px 10px rgba(15, 17, 16, 0.16);
 }
 
+.premium-active-card::before,
 .premium-upsell-card::before,
 .plaid-card::before,
 .review-card::before {
   background: linear-gradient(90deg, rgba(98, 222, 106, 0.48), rgba(98, 222, 106, 0.12), transparent 72%);
 }
 
+.premium-active-card h3,
+.premium-active-card strong,
 .premium-upsell-card h3,
 .premium-upsell-card strong,
 .plaid-card h3,
@@ -1982,6 +2002,8 @@ h3 {
   color: #ffffff;
 }
 
+.premium-active-card p,
+.premium-active-card span,
 .premium-upsell-card p,
 .premium-upsell-card span,
 .plaid-card p,
@@ -1989,6 +2011,33 @@ h3 {
 .plaid-card span,
 .review-card span {
   color: rgba(232, 243, 232, 0.76);
+}
+
+.premium-active-head {
+  align-items: center;
+}
+
+.status-pill-premium {
+  background: rgba(98, 222, 106, 0.14);
+  color: #c8ffce;
+  border: 1px solid rgba(98, 222, 106, 0.22);
+}
+
+.premium-active-summary {
+  display: grid;
+  gap: 6px;
+  margin-top: 8px;
+}
+
+.premium-active-summary strong {
+  font-size: 1.05rem;
+  letter-spacing: -0.02em;
+}
+
+.premium-active-actions {
+  display: flex;
+  justify-content: flex-start;
+  margin-top: 12px;
 }
 
 .premium-upsell-head {

@@ -82,6 +82,9 @@ const dashboardTotalSpent = document.getElementById('dashboard-total-spent');
 const dashboardLeftToSpend = document.getElementById('dashboard-left-to-spend');
 const dashboardStatusPill = document.getElementById('dashboard-status-pill');
 const dashboardBackButton = document.getElementById('dashboard-back');
+const premiumActiveCard = document.getElementById('premium-active-card');
+const premiumActivePill = document.getElementById('premium-active-pill');
+const premiumManageDashboardButton = document.getElementById('premium-manage-dashboard-button');
 const premiumUpsellCard = document.getElementById('premium-upsell-card');
 const premiumInfoToggle = document.getElementById('premium-info-toggle');
 const premiumInfoPanel = document.getElementById('premium-info-panel');
@@ -1488,6 +1491,7 @@ function renderDashboard() {
   }
 
   renderDashboardSummary();
+  renderPremiumActiveCard();
   renderPremiumUpsellCard();
   renderPlaidSection();
   renderReviewQueue();
@@ -1520,6 +1524,19 @@ function renderPremiumUpsellCard() {
   if (!shouldShow && premiumInfoPanel && premiumInfoToggle) {
     premiumInfoPanel.hidden = true;
     premiumInfoToggle.setAttribute('aria-expanded', 'false');
+  }
+}
+
+function renderPremiumActiveCard() {
+  if (!premiumActiveCard) {
+    return;
+  }
+
+  const shouldShow = Boolean(currentUser) && isPremiumActive();
+  premiumActiveCard.hidden = !shouldShow;
+
+  if (premiumActivePill) {
+    premiumActivePill.textContent = 'Unlocked';
   }
 }
 
@@ -2453,17 +2470,26 @@ function renderProfileBillingPanel() {
   const subscription = profileState.premium?.subscription;
   const premiumActive = Boolean(entitlement?.premiumAccess);
   const planLabel = premiumActive ? 'Premium' : 'Free';
-  const sourceLabel = subscription?.status ? subscription.status : premiumActive ? 'Manual access' : 'No active premium plan';
+  const statusLabel = subscription?.status
+    ? subscription.status.replaceAll('_', ' ').replace(/\b\w/g, character => character.toUpperCase())
+    : premiumActive
+      ? 'Active'
+      : 'No active premium plan';
+  const renewalLabel = subscription?.currentPeriodEnd
+    ? formatHistoryDate(subscription.currentPeriodEnd)
+    : 'Not scheduled yet';
 
   profileBillingSummary.innerHTML = `
     <div class="premium-summary-card">
       <span class="premium-label">Current plan</span>
       <strong>${planLabel}</strong>
-      <p>${sourceLabel}</p>
+      <p>${statusLabel}</p>
     </div>
     <div class="premium-feature-list">
       <div><strong>Bank sync</strong><span>${entitlement?.bankSyncEnabled ? 'Enabled' : 'Locked on free plan'}</span></div>
       <div><strong>Connected accounts</strong><span>Up to ${entitlement?.maxLinkedAccounts ?? 2}</span></div>
+      <div><strong>Billing cycle</strong><span>${premiumActive ? 'Monthly renewal' : 'Upgrade to unlock'}</span></div>
+      <div><strong>Next renewal</strong><span>${premiumActive ? renewalLabel : '—'}</span></div>
     </div>
   `;
 
@@ -3616,6 +3642,9 @@ reviewRefreshButton?.addEventListener('click', syncPlaidTransactions);
 premiumInfoToggle?.addEventListener('click', togglePremiumInfoPanel);
 premiumUpsellButton?.addEventListener('click', () => {
   beginStripeCheckout();
+});
+premiumManageDashboardButton?.addEventListener('click', () => {
+  openStripeBillingPortal();
 });
 plaidConnectButton?.addEventListener('click', startPlaidLinkFlow);
 plaidConnectedList?.addEventListener('click', event => {
