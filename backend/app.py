@@ -1362,12 +1362,13 @@ def create_app() -> Flask:
 
     def sync_transactions_for_user(user: User, budget: MonthlyBudget | None):
         items = get_active_plaid_items(user)
-        summary = {"added": 0, "queued": 0, "removed": 0}
+        summary = {"added": 0, "queued": 0, "removed": 0, "newReviews": []}
         for item in items:
             result = sync_transactions_for_item(item, budget)
             summary["added"] += result["added"]
             summary["queued"] += result["queued"]
             summary["removed"] += result["removed"]
+            summary["newReviews"].extend(result.get("newReviews") or [])
         return items, summary
 
     def sync_transactions_for_item(item: PlaidItem, budget: MonthlyBudget | None):
@@ -1399,6 +1400,7 @@ def create_app() -> Flask:
 
         synced_added = 0
         queued_reviews = 0
+        new_reviews = []
 
         for transaction_payload in [*added, *modified]:
             plaid_account = account_map.get(transaction_payload.get("account_id"))
@@ -1458,6 +1460,25 @@ def create_app() -> Flask:
             _, review_created = sync_plaid_review_for_transaction(plaid_transaction, budget)
             if review_created:
                 queued_reviews += 1
+                new_reviews.append(
+                    {
+                        "reviewId": str(plaid_transaction.review.id) if plaid_transaction.review else None,
+                        "transactionId": str(plaid_transaction.id),
+                        "name": plaid_transaction.merchant_name or plaid_transaction.name or "Purchase",
+                        "amountCents": plaid_transaction.amount_cents,
+                        "postedDate": (
+                            plaid_transaction.posted_date.isoformat()
+                            if plaid_transaction.posted_date
+                            else (
+                                plaid_transaction.authorized_date.isoformat()
+                                if plaid_transaction.authorized_date
+                                else None
+                            )
+                        ),
+                        "institutionName": item.institution_name,
+                        "accountName": plaid_account.name,
+                    }
+                )
 
             plaid_account.last_synced_at = datetime.utcnow()
 
@@ -1489,6 +1510,43 @@ def create_app() -> Flask:
             "added": synced_added,
             "queued": queued_reviews,
             "removed": len(removed_ids),
+            "newReviews": new_reviews,
+        }
+
+    def build_plaid_review_push_payload(user: User, budget: MonthlyBudget | None, new_reviews: list[dict]):
+        if not new_reviews:
+            return None
+
+        app_base_url = (app.config.get("APP_BASE_URL") or "").rstrip("/")
+        target_url = f"{app_base_url}/?reviewQueue=1" if app_base_url else "/?reviewQueue=1"
+        month_label = budget.month_label if budget else "this month"
+
+        if len(new_reviews) == 1:
+            review = new_reviews[0]
+            purchase_name = review.get("name") or "Purchase"
+            amount_label = format_currency_from_cents(review.get("amountCents"))
+            return {
+                "title": "New purchase detected",
+                "body": f"{amount_label} at {purchase_name} is ready to categorize.",
+                "url": target_url,
+                "tag": "largent-review-alert",
+                "data": {
+                    "type": "plaid-review",
+                    "reviewId": review.get("reviewId"),
+                    "monthLabel": month_label,
+                },
+            }
+
+        return {
+            "title": "New purchases detected",
+            "body": f"{len(new_reviews)} transactions are ready to categorize in {month_label}.",
+            "url": target_url,
+            "tag": "largent-review-alert-batch",
+            "data": {
+                "type": "plaid-review-batch",
+                "reviewIds": [review.get("reviewId") for review in new_reviews if review.get("reviewId")],
+                "monthLabel": month_label,
+            },
         }
 
     def get_plaid_review_queue(user: User, budget: MonthlyBudget | None):
@@ -2330,7 +2388,12 @@ def create_app() -> Flask:
                 user = db.session.get(User, user_id)
                 if user:
                     budget = get_current_month_budget(user)
-                    sync_transactions_for_item(item, budget)
+                    sync_result = sync_transactions_for_item(item, budget)
+                    new_reviews = sync_result.get("newReviews") or []
+                    if new_reviews:
+                        push_payload = build_plaid_review_push_payload(user, budget, new_reviews)
+                        if push_payload:
+                            send_push_to_user(user, push_payload)
                     item.error_code = None
                     item.error_message = None
                 webhook_event.processed_at = datetime.utcnow()
