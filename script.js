@@ -85,17 +85,12 @@ const dashboardTotalSpent = document.getElementById('dashboard-total-spent');
 const dashboardLeftToSpend = document.getElementById('dashboard-left-to-spend');
 const dashboardStatusPill = document.getElementById('dashboard-status-pill');
 const dashboardBackButton = document.getElementById('dashboard-back');
-const premiumActiveCard = document.getElementById('premium-active-card');
-const premiumActivePill = document.getElementById('premium-active-pill');
-const premiumManageDashboardButton = document.getElementById('premium-manage-dashboard-button');
-const premiumUpsellCard = document.getElementById('premium-upsell-card');
-const premiumInfoToggle = document.getElementById('premium-info-toggle');
-const premiumInfoPanel = document.getElementById('premium-info-panel');
-const premiumUpsellButton = document.getElementById('premium-upsell-button');
+const plaidCard = document.getElementById('plaid-card');
 const plaidConnectButton = document.getElementById('plaid-connect-button');
 const plaidSummaryRow = document.getElementById('plaid-summary-row');
 const plaidConnectedList = document.getElementById('plaid-connected-list');
 const plaidFeedback = document.getElementById('plaid-feedback');
+const reviewCard = document.getElementById('review-card');
 const reviewRefreshButton = document.getElementById('review-refresh-button');
 const reviewSummaryRow = document.getElementById('review-summary-row');
 const reviewQueueList = document.getElementById('review-queue-list');
@@ -116,6 +111,10 @@ const plaidDisconnectCopy = document.getElementById('plaid-disconnect-copy');
 const plaidDisconnectFeedback = document.getElementById('plaid-disconnect-feedback');
 const plaidDisconnectCancel = document.getElementById('plaid-disconnect-cancel');
 const plaidDisconnectConfirm = document.getElementById('plaid-disconnect-confirm');
+const premiumBankModal = document.getElementById('premium-bank-modal');
+const premiumBankClose = document.getElementById('premium-bank-close');
+const premiumBankCancel = document.getElementById('premium-bank-cancel');
+const premiumBankConfirm = document.getElementById('premium-bank-confirm');
 const addSpendingToggle = document.getElementById('add-spending-toggle');
 const addSpendingPanel = document.getElementById('add-spending-panel');
 const trackingSections = document.getElementById('tracking-sections');
@@ -414,8 +413,8 @@ function showScreen(screenName) {
     loadPlaidStatus({ silent: true });
     loadPlaidReviewQueue({ silent: true });
     loadPremiumStatus()
-      .then(() => renderPremiumUpsellCard())
-      .catch(() => renderPremiumUpsellCard());
+      .then(() => renderPlaidSection())
+      .catch(() => renderPlaidSection());
   }
 
   window.scrollTo({ top: 0, behavior: 'smooth' });
@@ -1495,8 +1494,6 @@ function renderDashboard() {
   }
 
   renderDashboardSummary();
-  renderPremiumActiveCard();
-  renderPremiumUpsellCard();
   renderPlaidSection();
   renderReviewQueue();
   renderTransactionCategoryOptions();
@@ -1521,44 +1518,20 @@ function hasPaidPremiumSubscription() {
   return Boolean(profileState.premium?.subscription && isPremiumActive());
 }
 
-function renderPremiumUpsellCard() {
-  if (!premiumUpsellCard) {
+function openPremiumBankModal() {
+  if (!premiumBankModal) {
     return;
   }
 
-  const shouldShow = Boolean(currentUser) && !isPremiumActive();
-  premiumUpsellCard.hidden = !shouldShow;
-
-  if (!shouldShow && premiumInfoPanel && premiumInfoToggle) {
-    premiumInfoPanel.hidden = true;
-    premiumInfoToggle.setAttribute('aria-expanded', 'false');
-  }
+  openModal(premiumBankModal);
 }
 
-function renderPremiumActiveCard() {
-  if (!premiumActiveCard) {
+function closePremiumBankModal() {
+  if (!premiumBankModal) {
     return;
   }
 
-  const shouldShow = Boolean(currentUser) && isPremiumActive();
-  premiumActiveCard.hidden = !shouldShow;
-
-  if (premiumActivePill) {
-    premiumActivePill.textContent = hasPaidPremiumSubscription() ? 'Unlocked' : 'Promo active';
-  }
-  if (premiumManageDashboardButton) {
-    premiumManageDashboardButton.textContent = hasPaidPremiumSubscription() ? 'Manage billing' : 'Upgrade before promo ends';
-  }
-}
-
-function togglePremiumInfoPanel() {
-  if (!premiumInfoPanel || !premiumInfoToggle) {
-    return;
-  }
-
-  const willOpen = premiumInfoPanel.hidden;
-  premiumInfoPanel.hidden = !willOpen;
-  premiumInfoToggle.setAttribute('aria-expanded', String(willOpen));
+  closeModal(premiumBankModal);
 }
 
 function openPremiumBillingExperience(message = '') {
@@ -1609,7 +1582,7 @@ async function handleStripeReturnState() {
       await apiRequest(`/api/stripe/checkout-session-status?session_id=${encodeURIComponent(sessionId)}`);
       await loadPremiumStatus();
       await loadPlaidStatus({ silent: true });
-      renderPremiumUpsellCard();
+      renderPlaidSection();
       renderProfileBillingPanel();
       openProfileModal('billing');
       setProfileFeedback(profileBillingFeedback, 'Premium is active. Bank sync is now unlocked.', 'success');
@@ -1660,25 +1633,36 @@ function setPlaidFeedback(message = '', tone = 'neutral') {
 }
 
 function renderPlaidSection() {
-  if (!plaidSummaryRow || !plaidConnectedList || !plaidConnectButton) {
+  if (!plaidSummaryRow || !plaidConnectedList || !plaidConnectButton || !plaidCard) {
     return;
   }
 
+  const premiumActive = isPremiumActive();
   const summary = plaidState.summary;
   const accounts = flattenPlaidAccounts(plaidState.items);
   const activeConnected = summary?.activeConnectedAccounts ?? accounts.length;
   const maxLinked = summary?.maxLinkedAccounts ?? 2;
   const canLinkMore = summary ? Boolean(summary.canLinkMoreAccounts) : true;
-  const premiumRequired = summary ? Boolean(summary.premiumRequired) : false;
+  const toggleActive = premiumActive && activeConnected > 0;
 
-  plaidConnectButton.disabled = plaidState.loading || plaidState.connecting || premiumRequired;
-  plaidConnectButton.textContent = plaidState.connecting
-    ? 'Connecting...'
-    : premiumRequired
-      ? 'Premium'
-      : canLinkMore
-        ? activeConnected > 0 ? 'Add account' : 'Connect bank'
-        : 'Manage accounts';
+  plaidCard.dataset.premiumState = premiumActive ? 'premium' : 'free';
+  plaidConnectButton.disabled = plaidState.loading || plaidState.connecting;
+  plaidConnectButton.classList.toggle('bank-sync-toggle-active', toggleActive);
+  plaidConnectButton.setAttribute('aria-checked', String(toggleActive));
+
+  if (!premiumActive) {
+    setPlaidFeedback('', 'neutral');
+    plaidSummaryRow.hidden = true;
+    plaidConnectedList.hidden = true;
+    plaidFeedback.hidden = true;
+    plaidConnectButton.setAttribute('aria-label', 'Learn about Premium bank sync');
+    return;
+  }
+
+  plaidSummaryRow.hidden = false;
+  plaidConnectedList.hidden = false;
+  plaidFeedback.hidden = false;
+  plaidConnectButton.setAttribute('aria-label', activeConnected > 0 ? 'Manage connected bank accounts' : 'Connect a bank account');
 
   const progressPercent = maxLinked ? Math.min(100, Math.max(0, (activeConnected / maxLinked) * 100)) : 0;
 
@@ -1698,14 +1682,12 @@ function renderPlaidSection() {
     setPlaidFeedback(plaidState.error, 'error');
   } else if (plaidState.success) {
     setPlaidFeedback(plaidState.success, 'success');
-  } else if (premiumRequired) {
-    setPlaidFeedback('Bank sync is a Premium feature. Once enabled, you can connect up to 2 accounts.', 'neutral');
   } else if (plaidState.loading) {
     setPlaidFeedback('Checking your bank sync status…', 'neutral');
   } else if (accounts.length) {
-    setPlaidFeedback('Use Change on any connected account if you want to swap in a different one.', 'neutral');
+    setPlaidFeedback('Use Change on any connected account if you want to swap it out.', 'neutral');
   } else {
-    setPlaidFeedback('Connect a bank to start pulling in eligible accounts for future transaction review.', 'neutral');
+    setPlaidFeedback('Toggle on to connect a bank and start pulling in eligible activity for review.', 'neutral');
   }
 
   if (!accounts.length) {
@@ -1736,6 +1718,20 @@ function renderPlaidSection() {
     `)
     .join('');
   renderProfileBankingPanel();
+}
+
+function handlePlaidDashboardToggle() {
+  if (!currentUser) {
+    openModal(authModal);
+    return;
+  }
+
+  if (!isPremiumActive()) {
+    openPremiumBankModal();
+    return;
+  }
+
+  startPlaidLinkFlow();
 }
 
 function findPlaidAccountById(accountId) {
@@ -1851,7 +1847,13 @@ function getActiveReviewItem() {
 }
 
 function renderReviewQueue() {
-  if (!reviewSummaryRow || !reviewQueueList || !reviewRefreshButton) {
+  if (!reviewSummaryRow || !reviewQueueList || !reviewRefreshButton || !reviewCard) {
+    return;
+  }
+
+  const premiumActive = isPremiumActive();
+  reviewCard.hidden = !premiumActive;
+  if (!premiumActive) {
     return;
   }
 
@@ -3215,8 +3217,6 @@ async function handlePromoCodeRedeem() {
     if (profilePromoCodeInput) {
       profilePromoCodeInput.value = '';
     }
-    renderPremiumActiveCard();
-    renderPremiumUpsellCard();
     renderProfileBillingPanel();
     renderPlaidSection();
     renderProfileBankingPanel();
@@ -3738,18 +3738,19 @@ profileConnectBankButton?.addEventListener('click', async () => {
 
 dashboardBackButton?.addEventListener('click', () => showScreen('allocation'));
 reviewRefreshButton?.addEventListener('click', syncPlaidTransactions);
-premiumInfoToggle?.addEventListener('click', togglePremiumInfoPanel);
-premiumUpsellButton?.addEventListener('click', () => {
+plaidConnectButton?.addEventListener('click', handlePlaidDashboardToggle);
+premiumBankClose?.addEventListener('click', closePremiumBankModal);
+premiumBankCancel?.addEventListener('click', closePremiumBankModal);
+premiumBankConfirm?.addEventListener('click', () => {
+  closePremiumBankModal();
   beginStripeCheckout();
 });
-premiumManageDashboardButton?.addEventListener('click', () => {
-  if (hasPaidPremiumSubscription()) {
-    openStripeBillingPortal();
-    return;
+premiumBankModal?.addEventListener('click', event => {
+  const closeTarget = event.target.closest('[data-close-modal]');
+  if (closeTarget) {
+    closePremiumBankModal();
   }
-  openPremiumBillingExperience('Your promo month is active. Upgrade here any time before it ends if you want to keep Premium on.');
 });
-plaidConnectButton?.addEventListener('click', startPlaidLinkFlow);
 plaidConnectedList?.addEventListener('click', event => {
   const disconnectButton = event.target.closest('[data-disconnect-plaid-account]');
   if (disconnectButton) {
@@ -3821,6 +3822,10 @@ document.addEventListener('keydown', event => {
 
   if (profileModal && !profileModal.hidden) {
     closeProfileModal();
+  }
+
+  if (premiumBankModal && !premiumBankModal.hidden) {
+    closePremiumBankModal();
   }
 });
 

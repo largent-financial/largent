@@ -425,91 +425,27 @@
         </div>
 
         <section class="dashboard-grid" aria-label="Monthly budget dashboard">
-          <article class="premium-active-card card" id="premium-active-card" hidden aria-labelledby="premium-active-title">
-            <div class="section-head premium-active-head">
-              <div>
-                <p class="eyebrow">Premium</p>
-                <h3 id="premium-active-title">Premium is active</h3>
+          <article class="plaid-card card" id="plaid-card" aria-labelledby="plaid-sync-title">
+            <div class="plaid-toggle-row">
+              <div class="plaid-brand-mark">
+                <img src="./plaid transparent.png" alt="Plaid logo" />
               </div>
-              <span class="status-pill status-pill-premium" id="premium-active-pill">Unlocked</span>
-            </div>
-
-            <div class="premium-active-summary">
-              <strong>Bank sync and billing tools are ready.</strong>
-              <span>Connect accounts, review synced spending, or manage your subscription any time.</span>
-            </div>
-
-            <div class="premium-active-actions">
-              <button class="button button-secondary" type="button" id="premium-manage-dashboard-button">Manage billing</button>
-            </div>
-          </article>
-
-          <article class="premium-upsell-card card" id="premium-upsell-card" hidden aria-labelledby="premium-upsell-title">
-            <div class="section-head premium-upsell-head">
-              <div>
-                <p class="eyebrow">Premium</p>
-                <h3 id="premium-upsell-title">Activate premium</h3>
+              <div class="plaid-toggle-copy">
+                <h3 id="plaid-sync-title">Connect to your bank</h3>
+                <p class="plaid-powered">Powered by Plaid</p>
               </div>
-              <button
-                class="premium-info-toggle"
-                type="button"
-                id="premium-info-toggle"
-                aria-expanded="false"
-                aria-controls="premium-info-panel"
-                aria-label="Learn what premium includes"
-              >
-                i
-              </button>
-            </div>
-
-            <div class="premium-upsell-summary">
-              <strong>Automatic bank sync for faster tracking.</strong>
-              <span>Connect up to 2 accounts and review spending without manually logging every debit.</span>
-            </div>
-
-            <div class="premium-info-panel" id="premium-info-panel" hidden>
-              <div class="premium-feature-list premium-feature-list-dashboard">
-                <div><strong>Bank sync</strong><span>Pull in recent debit activity from connected accounts.</span></div>
-                <div><strong>Review queue</strong><span>Approve purchases and categorize them right from your dashboard.</span></div>
-                <div><strong>Less manual entry</strong><span>Use manual logging only when you want to, not because you have to.</span></div>
-              </div>
-            </div>
-
-            <div class="premium-upsell-actions">
-              <button class="button button-primary" type="button" id="premium-upsell-button">See premium</button>
-            </div>
-          </article>
-
-          <article class="plaid-card card" aria-labelledby="plaid-sync-title">
-            <div class="section-head plaid-head">
-              <div>
-                <h3 id="plaid-sync-title">Bank sync</h3>
-                <p>You can connect up to 2 bank accounts to track spending from.</p>
-              </div>
-              <button class="button button-primary plaid-connect-button" type="button" id="plaid-connect-button">
-                Connect bank
+              <button class="bank-sync-toggle" type="button" id="plaid-connect-button" role="switch" aria-checked="false" aria-label="Toggle bank sync">
+                <span class="bank-sync-toggle-track" aria-hidden="true">
+                  <span class="bank-sync-toggle-state bank-sync-toggle-state-on">On</span>
+                  <span class="bank-sync-toggle-state bank-sync-toggle-state-off">Off</span>
+                  <span class="bank-sync-toggle-thumb"></span>
+                </span>
               </button>
             </div>
 
             <div class="plaid-summary-row" id="plaid-summary-row" aria-live="polite"></div>
             <p class="form-feedback plaid-feedback" id="plaid-feedback" role="status" aria-live="polite"></p>
             <div class="plaid-connected-list" id="plaid-connected-list"></div>
-          </article>
-
-          <article class="review-card card" aria-labelledby="review-queue-title">
-            <div class="section-head review-head">
-              <div>
-                <h3 id="review-queue-title">Bank activity to review</h3>
-                <p>Posted debits waiting for a category.</p>
-              </div>
-              <button class="button button-secondary review-refresh-button" type="button" id="review-refresh-button">
-                Refresh activity
-              </button>
-            </div>
-
-            <div class="review-summary-row" id="review-summary-row" aria-live="polite"></div>
-            <p class="form-feedback review-feedback" id="review-feedback" role="status" aria-live="polite"></p>
-            <div class="review-queue-list" id="review-queue-list"></div>
           </article>
 
           <article class="transaction-card card" aria-labelledby="transaction-entry-title">
@@ -555,6 +491,22 @@
                 </div>
               </form>
             </div>
+          </article>
+
+          <article class="review-card card" id="review-card" aria-labelledby="review-queue-title">
+            <div class="section-head review-head review-head-compact">
+              <div>
+                <h3 id="review-queue-title">Bank activity to review</h3>
+                <p>Posted debits waiting for a category.</p>
+              </div>
+              <button class="button button-secondary review-refresh-button" type="button" id="review-refresh-button">
+                Refresh activity
+              </button>
+            </div>
+
+            <div class="review-summary-row" id="review-summary-row" aria-live="polite"></div>
+            <p class="form-feedback review-feedback" id="review-feedback" role="status" aria-live="polite"></p>
+            <div class="review-queue-list" id="review-queue-list"></div>
           </article>
 
           <article class="tracking-card card" aria-labelledby="tracking-groups-title">
@@ -909,6 +861,30 @@
       <div class="modal-actions">
         <button class="button button-secondary" type="button" id="plaid-disconnect-cancel">Cancel</button>
         <button class="button button-primary" type="button" id="plaid-disconnect-confirm">Remove account</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="modal-shell" id="premium-bank-modal" hidden>
+    <div class="modal-backdrop" data-close-modal="premium-bank-modal"></div>
+    <div class="modal-card premium-bank-modal-card card" role="dialog" aria-modal="true" aria-labelledby="premium-bank-title">
+      <button class="modal-close" type="button" id="premium-bank-close" aria-label="Close premium bank sync modal">×</button>
+      <div class="modal-copy premium-bank-modal-copy">
+        <div class="premium-bank-modal-brand">
+          <img src="./plaid transparent.png" alt="Plaid logo" />
+          <p class="eyebrow">Powered by Plaid</p>
+        </div>
+        <h3 id="premium-bank-title">Connect your bank with Premium.</h3>
+        <p>Unlock live bank sync so Largent can pull in posted debit activity, help you categorize spending faster, and cut down on manual logging.</p>
+      </div>
+      <div class="premium-bank-benefits">
+        <div><strong>Up to 2 linked accounts</strong><span>Track spending from your real bank activity.</span></div>
+        <div><strong>Faster review queue</strong><span>Approve and categorize purchases right from your dashboard.</span></div>
+        <div><strong>Less manual entry</strong><span>Keep your monthly budget more current with less effort.</span></div>
+      </div>
+      <div class="modal-actions premium-bank-actions">
+        <button class="button button-secondary" type="button" id="premium-bank-cancel">Close</button>
+        <button class="button button-primary" type="button" id="premium-bank-confirm">Let's go</button>
       </div>
     </div>
   </div>
