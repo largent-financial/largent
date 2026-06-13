@@ -286,19 +286,19 @@ function playClickMotion(target) {
   }
 
   const direction = getClickMotionDirection(target);
-  const slideDistance = direction === 'backward' ? -10 : 10;
+  const slideDistance = direction === 'backward' ? -4 : 4;
   const previousAnimation = clickMotionAnimations.get(target);
   previousAnimation?.cancel();
 
   const animation = target.animate(
     [
       { transform: 'translate3d(0, 0, 0) scale(1)' },
-      { transform: `translate3d(${slideDistance}px, 0, 0) scale(0.985)`, offset: 0.46 },
+      { transform: `translate3d(${slideDistance}px, 0, 0) scale(0.992)`, offset: 0.52 },
       { transform: 'translate3d(0, 0, 0) scale(1)' }
     ],
     {
-      duration: 220,
-      easing: 'cubic-bezier(0.22, 1, 0.36, 1)',
+      duration: 280,
+      easing: 'cubic-bezier(0.25, 0.9, 0.3, 1)',
       fill: 'none'
     }
   );
