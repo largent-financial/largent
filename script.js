@@ -181,6 +181,7 @@ let plaidState = {
 };
 let reviewState = {
   loading: false,
+  hasLoaded: false,
   syncing: false,
   saving: false,
   items: [],
@@ -214,6 +215,7 @@ let pushState = {
   vapidPublicKey: null,
 };
 let addSpendingExpanded = false;
+let pendingReviewDeepLink = null;
 let persistedAppState = {
   incomeProfile: null,
   monthlyBudget: null,
@@ -793,6 +795,79 @@ function showScreen(screenName) {
   }
 
   window.scrollTo({ top: 0, behavior: 'smooth' });
+}
+
+function readReviewDeepLinkFromUrl() {
+  const params = new URLSearchParams(window.location.search);
+  const reviewQueueRequested = params.get('reviewQueue') === '1';
+  const reviewId = params.get('review');
+
+  if (!reviewQueueRequested && !reviewId) {
+    return null;
+  }
+
+  return {
+    reviewQueueRequested,
+    reviewId: reviewId || null
+  };
+}
+
+function clearReviewDeepLinkFromUrl() {
+  const url = new URL(window.location.href);
+  url.searchParams.delete('reviewQueue');
+  url.searchParams.delete('review');
+  url.searchParams.delete('source');
+  const nextUrl = `${url.pathname}${url.search}${url.hash}`;
+  window.history.replaceState({}, document.title, nextUrl);
+}
+
+function consumeReviewDeepLink() {
+  pendingReviewDeepLink = null;
+  clearReviewDeepLinkFromUrl();
+}
+
+function tryOpenReviewDeepLink() {
+  if (!pendingReviewDeepLink || !dashboardState || !currentUser) {
+    return false;
+  }
+
+  if (!isPremiumActive()) {
+    return false;
+  }
+
+  if (!reviewState.hasLoaded) {
+    return false;
+  }
+
+  if (!reviewState.items.length) {
+    if (reviewState.loading || reviewState.syncing) {
+      return false;
+    }
+    reviewState.success = 'That purchase is no longer waiting for a category.';
+    renderReviewQueue();
+    consumeReviewDeepLink();
+    return true;
+  }
+
+  const matchedReview = pendingReviewDeepLink.reviewId
+    ? reviewState.items.find(item => item.id === pendingReviewDeepLink.reviewId)
+    : reviewState.items[0];
+
+  if (!matchedReview && pendingReviewDeepLink.reviewId) {
+    reviewState.success = 'That purchase was already handled, so it is no longer in your review queue.';
+    renderReviewQueue();
+    consumeReviewDeepLink();
+    return true;
+  }
+
+  if (!matchedReview) {
+    return false;
+  }
+
+  showScreen('dashboard');
+  openReviewSheet(matchedReview.id);
+  consumeReviewDeepLink();
+  return true;
 }
 
 function setAuthMode(mode) {
@@ -2264,6 +2339,7 @@ function renderReviewQueue() {
         <span>Refresh activity after new purchases post to your connected accounts.</span>
       </div>
     `;
+    tryOpenReviewDeepLink();
     return;
   }
 
@@ -2286,6 +2362,8 @@ function renderReviewQueue() {
       `;
     })
     .join('');
+
+  tryOpenReviewDeepLink();
 }
 
 function renderReviewSheet() {
@@ -2420,6 +2498,7 @@ async function loadPlaidReviewQueue({ silent = false } = {}) {
   if (!currentUser || !dashboardState) {
     reviewState = {
       loading: false,
+      hasLoaded: false,
       syncing: false,
       saving: false,
       items: [],
@@ -2444,6 +2523,7 @@ async function loadPlaidReviewQueue({ silent = false } = {}) {
     reviewState = {
       ...reviewState,
       loading: false,
+      hasLoaded: true,
       items: payload.items || [],
       summary: payload.summary || { queueCount: 0, monthLabel: dashboardState.monthLabel },
       error: ''
@@ -2452,6 +2532,7 @@ async function loadPlaidReviewQueue({ silent = false } = {}) {
     return payload;
   } catch (error) {
     reviewState.loading = false;
+    reviewState.hasLoaded = true;
     reviewState.error = error.status === 401 ? '' : (error.message || 'We could not load bank activity to review.');
     renderReviewQueue();
     return null;
@@ -2471,12 +2552,14 @@ async function syncPlaidTransactions() {
   try {
     const payload = await apiRequest('/api/plaid/sync-transactions', { method: 'POST' });
     reviewState.syncing = false;
+    reviewState.hasLoaded = true;
     reviewState.items = payload.items || [];
     reviewState.summary = payload.summary || { queueCount: reviewState.items.length, monthLabel: dashboardState?.monthLabel || null };
     reviewState.success = payload.message || 'Bank activity refreshed.';
     renderReviewQueue();
   } catch (error) {
     reviewState.syncing = false;
+    reviewState.hasLoaded = true;
     reviewState.error = error.message || 'We could not refresh bank activity right now.';
     renderReviewQueue();
   }
@@ -3147,6 +3230,7 @@ function buildLedgerPayload() {
 }
 
 async function loadAppState() {
+  pendingReviewDeepLink = pendingReviewDeepLink || readReviewDeepLinkFromUrl();
   const payload = await apiRequest('/api/app-state');
   saveCurrentUser(payload.user || null);
   syncPersistedState(payload);
@@ -3189,6 +3273,7 @@ function routeAuthenticatedUser(appState) {
     renderAllocationScreen();
     renderDashboard();
     showScreen('dashboard');
+    tryOpenReviewDeepLink();
     return;
   }
 

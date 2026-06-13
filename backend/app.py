@@ -1518,21 +1518,27 @@ def create_app() -> Flask:
             return None
 
         app_base_url = (app.config.get("APP_BASE_URL") or "").rstrip("/")
-        target_url = f"{app_base_url}/?reviewQueue=1" if app_base_url else "/?reviewQueue=1"
+        target_url = f"{app_base_url}/?reviewQueue=1&source=push-review" if app_base_url else "/?reviewQueue=1&source=push-review"
         month_label = budget.month_label if budget else "this month"
 
         if len(new_reviews) == 1:
             review = new_reviews[0]
             purchase_name = review.get("name") or "Purchase"
             amount_label = format_currency_from_cents(review.get("amountCents"))
+            review_id = review.get("reviewId")
+            single_target_url = (
+                f"{app_base_url}/?reviewQueue=1&review={review_id}&source=push-review"
+                if app_base_url and review_id
+                else target_url
+            )
             return {
                 "title": "New purchase detected",
                 "body": f"{amount_label} at {purchase_name} is ready to categorize.",
-                "url": target_url,
+                "url": single_target_url,
                 "tag": "largent-review-alert",
                 "data": {
                     "type": "plaid-review",
-                    "reviewId": review.get("reviewId"),
+                    "reviewId": review_id,
                     "monthLabel": month_label,
                 },
             }
