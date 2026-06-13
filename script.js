@@ -2350,15 +2350,23 @@ async function startPlaidLinkFlow() {
       token: linkPayload.linkToken,
       onSuccess: async (publicToken, metadata) => {
         try {
-          await apiRequest('/api/plaid/exchange-public-token', {
+          const connectPayload = await apiRequest('/api/plaid/exchange-public-token', {
             method: 'POST',
             body: {
               publicToken,
               metadata
             }
           });
-          plaidState.success = 'Bank account connected successfully.';
-          plaidState.error = '';
+          if (connectPayload.syncWarning) {
+            plaidState.success = '';
+            plaidState.error = connectPayload.syncWarning;
+          } else if ((connectPayload.syncSummary?.queued || 0) > 0) {
+            plaidState.success = `Bank connected. ${connectPayload.syncSummary.queued} transaction${connectPayload.syncSummary.queued === 1 ? '' : 's'} ready to review.`;
+            plaidState.error = '';
+          } else {
+            plaidState.success = 'Bank account connected successfully.';
+            plaidState.error = '';
+          }
           await loadPlaidStatus({ silent: true });
           await loadPlaidReviewQueue({ silent: true });
         } catch (error) {
