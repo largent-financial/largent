@@ -43,12 +43,24 @@ body {
 
 button,
 input,
-select {
+select,
+a[href],
+[role='button'],
+.tax-switch,
+.settings-row {
   font: inherit;
 }
 
 button {
   cursor: pointer;
+  touch-action: manipulation;
+}
+
+a[href],
+[role='button'],
+.tax-switch,
+.settings-row {
+  touch-action: manipulation;
 }
 
 a {

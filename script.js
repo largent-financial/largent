@@ -144,6 +144,14 @@ const breakdownTargets = {
   netMonthly: document.getElementById('detail-net-monthly')
 };
 
+const CLICK_MOTION_SELECTOR = [
+  'button',
+  '[role="button"]',
+  'a[href]',
+  '.tax-switch',
+  '.settings-row'
+].join(', ');
+
 let currentStep = 1;
 let previousStep = 1;
 let currentMethod = 'salary';
@@ -200,6 +208,7 @@ let persistedAppState = {
 };
 
 const CURRENT_USER_STORAGE_KEY = 'largent-current-user';
+const clickMotionAnimations = new WeakMap();
 
 const defaultAllocationSections = [
   {
@@ -218,6 +227,94 @@ const defaultAllocationSections = [
     categories: ['Groceries', 'Gas', 'Fun']
   }
 ];
+
+function shouldReduceMotion() {
+  return (
+    window.matchMedia('(prefers-reduced-motion: reduce)').matches ||
+    document.documentElement.dataset.reduceMotion === 'true'
+  );
+}
+
+function getClickMotionTarget(element) {
+  if (!element || !(element instanceof Element)) {
+    return null;
+  }
+
+  return element.closest(CLICK_MOTION_SELECTOR);
+}
+
+function isMotionTargetDisabled(target) {
+  if (!target) {
+    return true;
+  }
+
+  if (target.matches('[aria-disabled="true"]')) {
+    return true;
+  }
+
+  if ('disabled' in target && target.disabled) {
+    return true;
+  }
+
+  if (target.closest('[hidden]')) {
+    return true;
+  }
+
+  return false;
+}
+
+function getClickMotionDirection(target) {
+  if (!target) {
+    return 'forward';
+  }
+
+  if (
+    target.dataset.clickSlide === 'backward' ||
+    target.matches(
+      '#back-step, #allocation-back, #dashboard-back, #allocation-confirm-cancel, #profile-account-confirm-cancel, #plaid-disconnect-cancel, #premium-bank-cancel, #review-sheet-dismiss, #review-sheet-cancel, [data-close-modal]'
+    )
+  ) {
+    return 'backward';
+  }
+
+  return 'forward';
+}
+
+function playClickMotion(target) {
+  if (!target || shouldReduceMotion() || isMotionTargetDisabled(target)) {
+    return;
+  }
+
+  const direction = getClickMotionDirection(target);
+  const slideDistance = direction === 'backward' ? -10 : 10;
+  const previousAnimation = clickMotionAnimations.get(target);
+  previousAnimation?.cancel();
+
+  const animation = target.animate(
+    [
+      { transform: 'translate3d(0, 0, 0) scale(1)' },
+      { transform: `translate3d(${slideDistance}px, 0, 0) scale(0.985)`, offset: 0.46 },
+      { transform: 'translate3d(0, 0, 0) scale(1)' }
+    ],
+    {
+      duration: 220,
+      easing: 'cubic-bezier(0.22, 1, 0.36, 1)',
+      fill: 'none'
+    }
+  );
+
+  clickMotionAnimations.set(target, animation);
+  animation.addEventListener('finish', () => {
+    if (clickMotionAnimations.get(target) === animation) {
+      clickMotionAnimations.delete(target);
+    }
+  });
+  animation.addEventListener('cancel', () => {
+    if (clickMotionAnimations.get(target) === animation) {
+      clickMotionAnimations.delete(target);
+    }
+  });
+}
 
 const stateOptions = [
   'Alabama',
@@ -3638,6 +3735,40 @@ backStepButton.addEventListener('click', () => {
     updateFlowStep();
   }
 });
+
+document.addEventListener(
+  'pointerdown',
+  event => {
+    if (event.button !== 0) {
+      return;
+    }
+
+    const target = getClickMotionTarget(event.target);
+    if (!target) {
+      return;
+    }
+
+    playClickMotion(target);
+  },
+  true
+);
+
+document.addEventListener(
+  'keydown',
+  event => {
+    if (event.key !== 'Enter' && event.key !== ' ') {
+      return;
+    }
+
+    const target = getClickMotionTarget(event.target);
+    if (!target) {
+      return;
+    }
+
+    playClickMotion(target);
+  },
+  true
+);
 
 allocationSections?.addEventListener('click', handleAllocationInteraction);
 allocationSections?.addEventListener('input', handleAllocationInput);
