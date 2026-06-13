@@ -12,6 +12,9 @@ const profilePanels = [...document.querySelectorAll('[data-profile-panel]')];
 const profileAccountForm = document.getElementById('profile-account-form');
 const profileAccountFeedback = document.getElementById('profile-account-feedback');
 const profileAccountSaveButton = document.getElementById('profile-account-save-button');
+const transactionPushToggle = document.getElementById('transaction-push-toggle');
+const transactionAlertsDetail = document.getElementById('transaction-alerts-detail');
+const transactionPushTestButton = document.getElementById('transaction-push-test-button');
 const profileResetPasswordButton = document.getElementById('profile-reset-password-button');
 const profileBillingSummary = document.getElementById('profile-billing-summary');
 const profileBillingFeedback = document.getElementById('profile-billing-feedback');
@@ -200,6 +203,16 @@ let profileState = {
   premium: null,
   pendingAccountPayload: null
 };
+let pushState = {
+  supported: false,
+  configured: false,
+  permission: 'default',
+  subscription: null,
+  subscriptionCount: 0,
+  loading: false,
+  sendingTest: false,
+  vapidPublicKey: null,
+};
 let addSpendingExpanded = false;
 let persistedAppState = {
   incomeProfile: null,
@@ -314,6 +327,271 @@ function playClickMotion(target) {
       clickMotionAnimations.delete(target);
     }
   });
+}
+
+function pushSupportedInBrowser() {
+  return 'serviceWorker' in navigator && 'PushManager' in window && 'Notification' in window;
+}
+
+function urlBase64ToUint8Array(base64String) {
+  const padding = '='.repeat((4 - (base64String.length % 4)) % 4);
+  const normalized = (base64String + padding).replace(/-/g, '+').replace(/_/g, '/');
+  const rawData = window.atob(normalized);
+  return Uint8Array.from([...rawData].map(character => character.charCodeAt(0)));
+}
+
+function getDeviceLabel() {
+  const platform = navigator.platform || 'Device';
+  const standalone = window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone;
+  return `${platform}${standalone ? ' · Home Screen' : ' · Browser'}`;
+}
+
+async function registerPushServiceWorker() {
+  if (!pushSupportedInBrowser()) {
+    return null;
+  }
+
+  try {
+    const registration = await navigator.serviceWorker.register('/sw.js');
+    return registration;
+  } catch (error) {
+    return null;
+  }
+}
+
+async function getExistingPushSubscription() {
+  if (!pushSupportedInBrowser()) {
+    return null;
+  }
+
+  const registration = await registerPushServiceWorker();
+  if (!registration) {
+    return null;
+  }
+
+  return registration.pushManager.getSubscription();
+}
+
+function renderPushAlertsUI() {
+  if (!transactionPushToggle || !transactionAlertsDetail || !transactionPushTestButton) {
+    return;
+  }
+
+  const supported = pushState.supported;
+  const configured = pushState.configured;
+  const subscribed = Boolean(pushState.subscription);
+  const enabled = Boolean(currentUser?.transactionPushAlertsEnabled && subscribed);
+
+  transactionPushToggle.checked = enabled;
+  transactionPushToggle.disabled = !currentUser || pushState.loading || !supported || !configured;
+  transactionPushTestButton.hidden = !supported || !configured;
+  transactionPushTestButton.disabled = !enabled || pushState.sendingTest;
+  transactionPushTestButton.textContent = pushState.sendingTest ? 'Sending…' : 'Send test alert';
+
+  if (!supported) {
+    transactionAlertsDetail.textContent = 'This browser does not support push alerts here yet. On iPhone, add Largent to your Home Screen first.';
+    return;
+  }
+
+  if (!configured) {
+    transactionAlertsDetail.textContent = 'Push alerts are not configured on the server yet.';
+    return;
+  }
+
+  if (pushState.permission === 'denied') {
+    transactionAlertsDetail.textContent = 'Notifications are blocked for Largent on this device. Re-enable them in browser settings to use alerts.';
+    return;
+  }
+
+  if (enabled) {
+    transactionAlertsDetail.textContent = `This device is ready for transaction alerts. ${pushState.subscriptionCount || 1} active device${pushState.subscriptionCount === 1 ? '' : 's'} on your account.`;
+    return;
+  }
+
+  transactionAlertsDetail.textContent = 'Get a push when new synced spending is ready to categorize on this device.';
+}
+
+async function loadPushStatus({ silent = false } = {}) {
+  pushState.supported = pushSupportedInBrowser();
+  pushState.permission = pushSupportedInBrowser() ? Notification.permission : 'default';
+
+  if (!currentUser) {
+    pushState = {
+      ...pushState,
+      configured: false,
+      vapidPublicKey: null,
+      subscription: null,
+      subscriptionCount: 0,
+      loading: false,
+      sendingTest: false,
+    };
+    renderPushAlertsUI();
+    return null;
+  }
+
+  if (!pushState.supported) {
+    renderPushAlertsUI();
+    return null;
+  }
+
+  pushState.loading = true;
+  if (!silent) {
+    setProfileFeedback(profileAccountFeedback, '');
+  }
+  renderPushAlertsUI();
+
+  try {
+    const [statusPayload, existingSubscription] = await Promise.all([
+      apiRequest('/api/push/status'),
+      getExistingPushSubscription(),
+    ]);
+    pushState = {
+      ...pushState,
+      configured: Boolean(statusPayload.configured),
+      vapidPublicKey: statusPayload.vapidPublicKey || null,
+      subscription: existingSubscription,
+      subscriptionCount: statusPayload.subscriptionCount || 0,
+      permission: Notification.permission,
+      loading: false,
+    };
+    renderPushAlertsUI();
+    return statusPayload;
+  } catch (error) {
+    pushState.loading = false;
+    renderPushAlertsUI();
+    if (!silent) {
+      setProfileFeedback(profileAccountFeedback, error.message || 'We could not load transaction alert settings.', 'error');
+    }
+    return null;
+  }
+}
+
+async function enableTransactionPushAlerts() {
+  if (!currentUser) {
+    openModal(authModal);
+    return;
+  }
+  if (!pushState.supported) {
+    setProfileFeedback(profileAccountFeedback, 'This device cannot receive Largent push alerts here yet.', 'error');
+    renderPushAlertsUI();
+    return;
+  }
+  if (!pushState.configured || !pushState.vapidPublicKey) {
+    setProfileFeedback(profileAccountFeedback, 'Push alerts are not configured on the server yet.', 'error');
+    renderPushAlertsUI();
+    return;
+  }
+
+  pushState.loading = true;
+  renderPushAlertsUI();
+
+  try {
+    const permission = await Notification.requestPermission();
+    pushState.permission = permission;
+    if (permission !== 'granted') {
+      throw new Error('Notification permission was not granted.');
+    }
+
+    const registration = await registerPushServiceWorker();
+    if (!registration) {
+      throw new Error('Largent could not register push support on this device.');
+    }
+
+    let subscription = await registration.pushManager.getSubscription();
+    if (!subscription) {
+      subscription = await registration.pushManager.subscribe({
+        userVisibleOnly: true,
+        applicationServerKey: urlBase64ToUint8Array(pushState.vapidPublicKey),
+      });
+    }
+
+    const payload = await apiRequest('/api/push/subscribe', {
+      method: 'POST',
+      body: {
+        subscription: subscription.toJSON(),
+        userAgent: navigator.userAgent,
+        deviceLabel: getDeviceLabel(),
+      },
+    });
+
+    saveCurrentUser(payload.user || currentUser);
+    pushState.subscription = subscription;
+    pushState.subscriptionCount = payload.subscriptionCount || 1;
+    setProfileFeedback(profileAccountFeedback, payload.message || 'Transaction alerts enabled for this device.', 'success');
+  } catch (error) {
+    if (transactionPushToggle) {
+      transactionPushToggle.checked = false;
+    }
+    setProfileFeedback(profileAccountFeedback, error.message || 'We could not enable transaction alerts on this device.', 'error');
+  } finally {
+    pushState.loading = false;
+    renderPushAlertsUI();
+  }
+}
+
+async function disableTransactionPushAlerts() {
+  pushState.loading = true;
+  renderPushAlertsUI();
+
+  try {
+    const subscription = pushState.subscription || await getExistingPushSubscription();
+    if (subscription) {
+      await apiRequest('/api/push/unsubscribe', {
+        method: 'POST',
+        body: { endpoint: subscription.endpoint },
+      });
+      await subscription.unsubscribe().catch(() => {});
+    } else {
+      await apiRequest('/api/push/unsubscribe', { method: 'POST', body: {} });
+    }
+
+    if (currentUser) {
+      saveCurrentUser({
+        ...currentUser,
+        transactionPushAlertsEnabled: false,
+      });
+    }
+    pushState.subscription = null;
+    pushState.subscriptionCount = 0;
+    setProfileFeedback(profileAccountFeedback, 'Transaction alerts disabled on this device.', 'success');
+  } catch (error) {
+    setProfileFeedback(profileAccountFeedback, error.message || 'We could not disable transaction alerts.', 'error');
+  } finally {
+    pushState.loading = false;
+    renderPushAlertsUI();
+  }
+}
+
+async function handleTransactionPushToggleChange() {
+  if (!transactionPushToggle) {
+    return;
+  }
+
+  if (transactionPushToggle.checked) {
+    await enableTransactionPushAlerts();
+    return;
+  }
+
+  await disableTransactionPushAlerts();
+}
+
+async function sendTransactionPushTest() {
+  if (!currentUser || pushState.sendingTest) {
+    return;
+  }
+
+  pushState.sendingTest = true;
+  renderPushAlertsUI();
+
+  try {
+    const payload = await apiRequest('/api/push/test', { method: 'POST' });
+    setProfileFeedback(profileAccountFeedback, payload.message || 'Test alert sent.', 'success');
+  } catch (error) {
+    setProfileFeedback(profileAccountFeedback, error.message || 'We could not send a test alert.', 'error');
+  } finally {
+    pushState.sendingTest = false;
+    renderPushAlertsUI();
+  }
 }
 
 const stateOptions = [
@@ -2577,6 +2855,10 @@ function renderProfileAccountPanel() {
   profileAccountForm.elements.email.value = currentUser.email || '';
   profileAccountForm.elements.monthlySummaryEmailsEnabled.checked = Boolean(currentUser.monthlySummaryEmailsEnabled);
   profileAccountForm.elements.securityEmailsEnabled.checked = Boolean(currentUser.securityEmailsEnabled);
+  if (profileAccountForm.elements.transactionPushAlertsEnabled) {
+    profileAccountForm.elements.transactionPushAlertsEnabled.checked = Boolean(currentUser.transactionPushAlertsEnabled && pushState.subscription);
+  }
+  renderPushAlertsUI();
 }
 
 function renderProfileBillingPanel() {
@@ -2722,8 +3004,12 @@ async function openProfileModal(nextView = 'account') {
   setProfileView(nextView);
 
   try {
-    await loadPremiumStatus();
+    await Promise.all([
+      loadPremiumStatus(),
+      loadPushStatus({ silent: true }),
+    ]);
     renderProfileBillingPanel();
+    renderProfileAccountPanel();
     renderProfileBankingPanel();
   } catch (error) {
     setProfileFeedback(profileBillingFeedback, error.message || 'We could not load your billing details.', 'error');
@@ -2894,6 +3180,7 @@ function routeAuthenticatedUser(appState) {
   }
 
   loadPlaidStatus({ silent: true });
+  loadPushStatus({ silent: true });
 
   if (appState?.monthlyBudget) {
     currentStep = 4;
@@ -3838,6 +4125,8 @@ profileModal?.addEventListener('click', event => {
   }
 });
 profileAccountForm?.addEventListener('submit', handleAccountProfileSave);
+transactionPushToggle?.addEventListener('change', handleTransactionPushToggleChange);
+transactionPushTestButton?.addEventListener('click', sendTransactionPushTest);
 profileAccountConfirmCancelButton?.addEventListener('click', () => {
   profileState.pendingAccountPayload = null;
   closeModal(profileAccountConfirmModal);
@@ -3970,6 +4259,10 @@ document.addEventListener('keydown', event => {
 
 setAuthMode('signup');
 setRecoveryStage('request');
+pushState.supported = pushSupportedInBrowser();
+pushState.permission = pushState.supported ? Notification.permission : 'default';
+renderPushAlertsUI();
+registerPushServiceWorker();
 loadCurrentUser();
 populateStates();
 stateSelect.value = 'Tennessee';

@@ -743,6 +743,16 @@
                   </div>
                   <input type="checkbox" name="securityEmailsEnabled" />
                 </label>
+                <label class="settings-row">
+                  <div>
+                    <strong>Transaction alerts</strong>
+                    <span id="transaction-alerts-detail">Get a push when new synced spending is ready to categorize on this device.</span>
+                  </div>
+                  <input type="checkbox" name="transactionPushAlertsEnabled" id="transaction-push-toggle" />
+                </label>
+              </div>
+              <div class="push-device-actions">
+                <button class="button button-secondary button-compact" type="button" id="transaction-push-test-button">Send test alert</button>
               </div>
               <p class="auth-feedback" id="profile-account-feedback" role="status" aria-live="polite"></p>
               <div class="profile-form-actions">

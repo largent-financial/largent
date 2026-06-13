@@ -30,6 +30,7 @@ create table users (
   marketing_opt_in boolean not null default false,
   monthly_summary_emails_enabled boolean not null default true,
   security_emails_enabled boolean not null default true,
+  transaction_push_alerts_enabled boolean not null default false,
   email_verified_at timestamptz,
   last_login_at timestamptz,
   pw_code_hash text,
@@ -378,3 +379,21 @@ create table plaid_webhook_events (
 
 create index plaid_webhook_events_item_created_idx on plaid_webhook_events(plaid_item_row_id, created_at desc);
 create index plaid_webhook_events_type_code_idx on plaid_webhook_events(webhook_type, webhook_code);
+
+create table push_subscriptions (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid not null references users(id) on delete cascade,
+  endpoint text not null unique,
+  p256dh_key text not null,
+  auth_key text not null,
+  content_encoding varchar(50),
+  user_agent text,
+  device_label varchar(120),
+  is_active boolean not null default true,
+  last_seen_at timestamptz,
+  last_notified_at timestamptz,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+
+create index push_subscriptions_user_active_idx on push_subscriptions(user_id, is_active);

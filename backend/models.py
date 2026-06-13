@@ -89,6 +89,7 @@ class User(TimestampMixin, db.Model):
     marketing_opt_in: Mapped[bool] = mapped_column(default=False, nullable=False)
     monthly_summary_emails_enabled: Mapped[bool] = mapped_column(default=True, nullable=False)
     security_emails_enabled: Mapped[bool] = mapped_column(default=True, nullable=False)
+    transaction_push_alerts_enabled: Mapped[bool] = mapped_column(default=False, nullable=False)
     email_verified_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     last_login_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     pw_code_hash: Mapped[str | None] = mapped_column(String(255))
@@ -107,6 +108,7 @@ class User(TimestampMixin, db.Model):
     plaid_transactions: Mapped[list["PlaidTransactionRaw"]] = relationship(back_populates="user", cascade="all, delete-orphan")
     plaid_transaction_reviews: Mapped[list["PlaidTransactionReview"]] = relationship(back_populates="user", cascade="all, delete-orphan")
     plaid_webhook_events: Mapped[list["PlaidWebhookEvent"]] = relationship(back_populates="user", cascade="all, delete-orphan")
+    push_subscriptions: Mapped[list["PushSubscription"]] = relationship(back_populates="user", cascade="all, delete-orphan")
 
 
 class AuthToken(TimestampMixin, db.Model):
@@ -534,4 +536,26 @@ class PlaidWebhookEvent(db.Model):
     __table_args__ = (
         Index("ix_plaid_webhook_events_item_created", "plaid_item_row_id", "created_at"),
         Index("ix_plaid_webhook_events_type_code", "webhook_type", "webhook_code"),
+    )
+
+
+class PushSubscription(TimestampMixin, db.Model):
+    __tablename__ = "push_subscriptions"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=generate_uuid)
+    user_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
+    endpoint: Mapped[str] = mapped_column(Text, nullable=False, unique=True)
+    p256dh_key: Mapped[str] = mapped_column(Text, nullable=False)
+    auth_key: Mapped[str] = mapped_column(Text, nullable=False)
+    content_encoding: Mapped[str | None] = mapped_column(String(50))
+    user_agent: Mapped[str | None] = mapped_column(Text)
+    device_label: Mapped[str | None] = mapped_column(String(120))
+    is_active: Mapped[bool] = mapped_column(default=True, nullable=False)
+    last_seen_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    last_notified_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+    user: Mapped["User"] = relationship(back_populates="push_subscriptions")
+
+    __table_args__ = (
+        Index("ix_push_subscriptions_user_active", "user_id", "is_active"),
     )

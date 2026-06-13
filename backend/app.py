@@ -20,6 +20,7 @@ from urllib import request as urlrequest
 from uuid import UUID
 
 from flask import Flask, jsonify, request, send_from_directory, session
+from pywebpush import WebPushException, webpush
 from sqlalchemy import func
 from werkzeug.security import check_password_hash, generate_password_hash
 
@@ -74,6 +75,7 @@ def create_app() -> Flask:
         PlaidTransactionRaw,
         PlaidTransactionReview,
         PlaidWebhookEvent,
+        PushSubscription,
         TaxTreatment,
         Transaction,
         User,
@@ -144,6 +146,48 @@ def create_app() -> Flask:
             raw_connection.close()
 
         click.echo("User email preference columns synced.")
+
+    @app.cli.command("sync-push-schema")
+    def sync_push_schema_command():
+        raw_connection = db.engine.raw_connection()
+        try:
+            with raw_connection.cursor() as cursor:
+                cursor.execute(
+                    """
+                    alter table users
+                    add column if not exists transaction_push_alerts_enabled boolean not null default false
+                    """
+                )
+                cursor.execute(
+                    """
+                    create table if not exists push_subscriptions (
+                      id uuid primary key default gen_random_uuid(),
+                      user_id uuid not null references users(id) on delete cascade,
+                      endpoint text not null unique,
+                      p256dh_key text not null,
+                      auth_key text not null,
+                      content_encoding varchar(50),
+                      user_agent text,
+                      device_label varchar(120),
+                      is_active boolean not null default true,
+                      last_seen_at timestamptz,
+                      last_notified_at timestamptz,
+                      created_at timestamptz not null default now(),
+                      updated_at timestamptz not null default now()
+                    )
+                    """
+                )
+                cursor.execute(
+                    """
+                    create index if not exists push_subscriptions_user_active_idx
+                    on push_subscriptions(user_id, is_active)
+                    """
+                )
+            raw_connection.commit()
+        finally:
+            raw_connection.close()
+
+        click.echo("Push notification schema synced.")
 
     @app.cli.command("sync-email-events-schema")
     def sync_email_events_schema_command():
@@ -530,6 +574,7 @@ def create_app() -> Flask:
             "lastName": user.last_name,
             "monthlySummaryEmailsEnabled": user.monthly_summary_emails_enabled,
             "securityEmailsEnabled": user.security_emails_enabled,
+            "transactionPushAlertsEnabled": user.transaction_push_alerts_enabled,
         }
 
     def serialize_subscription(subscription: UserSubscription | None):
@@ -638,6 +683,16 @@ def create_app() -> Flask:
             },
         }
 
+    def serialize_push_subscription(subscription: PushSubscription):
+        return {
+            "id": str(subscription.id),
+            "endpoint": subscription.endpoint,
+            "deviceLabel": subscription.device_label,
+            "isActive": subscription.is_active,
+            "lastSeenAt": subscription.last_seen_at.isoformat() if subscription.last_seen_at else None,
+            "lastNotifiedAt": subscription.last_notified_at.isoformat() if subscription.last_notified_at else None,
+        }
+
     def cents_from_amount(value) -> int:
         return int(round(float(value or 0) * 100))
 
@@ -670,6 +725,63 @@ def create_app() -> Flask:
         if app_base_url.startswith("http://") or app_base_url.startswith("https://"):
             return f"{app_base_url}/api/plaid/webhooks"
         return None
+
+    def push_notifications_configured() -> bool:
+        return bool(
+            app.config.get("VAPID_PUBLIC_KEY")
+            and app.config.get("VAPID_PRIVATE_KEY")
+            and app.config.get("VAPID_SUBJECT")
+        )
+
+    def get_active_push_subscriptions(user: User):
+        return (
+            db.session.execute(
+                db.select(PushSubscription)
+                .filter_by(user_id=user.id, is_active=True)
+                .order_by(PushSubscription.updated_at.desc())
+            )
+            .scalars()
+            .all()
+        )
+
+    def send_push_notification(subscription: PushSubscription, payload: dict):
+        webpush(
+            subscription_info={
+                "endpoint": subscription.endpoint,
+                "keys": {
+                    "p256dh": subscription.p256dh_key,
+                    "auth": subscription.auth_key,
+                },
+            },
+            data=json.dumps(payload),
+            vapid_private_key=app.config.get("VAPID_PRIVATE_KEY"),
+            vapid_claims={"sub": app.config.get("VAPID_SUBJECT")},
+        )
+        subscription.last_notified_at = datetime.utcnow()
+        subscription.last_seen_at = datetime.utcnow()
+
+    def send_push_to_user(user: User, payload: dict):
+        if not push_notifications_configured() or not user.transaction_push_alerts_enabled:
+            return {"sent": 0, "deactivated": 0, "errors": []}
+
+        active_subscriptions = get_active_push_subscriptions(user)
+        sent = 0
+        deactivated = 0
+        errors = []
+        for subscription in active_subscriptions:
+            try:
+                send_push_notification(subscription, payload)
+                sent += 1
+            except WebPushException as error:
+                status_code = getattr(error.response, "status_code", None) if getattr(error, "response", None) else None
+                if status_code in (404, 410):
+                    subscription.is_active = False
+                    deactivated += 1
+                else:
+                    errors.append(str(error))
+            except Exception as error:
+                errors.append(str(error))
+        return {"sent": sent, "deactivated": deactivated, "errors": errors}
 
     def stripe_api_request(path: str, payload: dict | None = None, *, method: str = "POST") -> dict:
         secret_key = app.config.get("STRIPE_SECRET_KEY")
@@ -1478,6 +1590,147 @@ def create_app() -> Flask:
                 "incomeProfile": serialize_income_profile(income_profile),
                 "monthlyBudget": serialize_budget(monthly_budget),
                 "hasCompletedOnboarding": bool(income_profile and monthly_budget),
+            }
+        )
+
+    @app.get("/api/push/status")
+    def push_status():
+        user = get_current_user()
+        if not user:
+            return jsonify({"message": "You must be logged in to manage transaction alerts."}), 401
+
+        subscriptions = get_active_push_subscriptions(user)
+        return jsonify(
+            {
+                "configured": push_notifications_configured(),
+                "vapidPublicKey": app.config.get("VAPID_PUBLIC_KEY"),
+                "alertsEnabled": user.transaction_push_alerts_enabled,
+                "subscriptionCount": len(subscriptions),
+                "subscriptions": [serialize_push_subscription(item) for item in subscriptions],
+            }
+        )
+
+    @app.post("/api/push/subscribe")
+    def push_subscribe():
+        user = get_current_user()
+        if not user:
+            return jsonify({"message": "You must be logged in to enable transaction alerts."}), 401
+        if not push_notifications_configured():
+            return jsonify({"message": "Push notifications are not configured yet."}), 503
+
+        payload = request.get_json(silent=True) or {}
+        subscription_payload = payload.get("subscription") or {}
+        endpoint = (subscription_payload.get("endpoint") or "").strip()
+        keys = subscription_payload.get("keys") or {}
+        p256dh_key = (keys.get("p256dh") or "").strip()
+        auth_key = (keys.get("auth") or "").strip()
+
+        if not endpoint or not p256dh_key or not auth_key:
+            return jsonify({"message": "Push subscription details were incomplete."}), 400
+
+        existing_subscription = db.session.execute(
+            db.select(PushSubscription).filter_by(endpoint=endpoint)
+        ).scalar_one_or_none()
+
+        if existing_subscription and existing_subscription.user_id != user.id:
+            existing_subscription.user_id = user.id
+
+        subscription = existing_subscription or PushSubscription(
+            user_id=user.id,
+            endpoint=endpoint,
+            p256dh_key=p256dh_key,
+            auth_key=auth_key,
+        )
+
+        subscription.p256dh_key = p256dh_key
+        subscription.auth_key = auth_key
+        subscription.content_encoding = subscription_payload.get("expirationTime") and "aesgcm" or subscription.content_encoding
+        subscription.user_agent = (payload.get("userAgent") or request.headers.get("User-Agent") or "")[:4000]
+        subscription.device_label = (payload.get("deviceLabel") or "").strip()[:120] or None
+        subscription.is_active = True
+        subscription.last_seen_at = datetime.utcnow()
+
+        if not existing_subscription:
+            db.session.add(subscription)
+
+        user.transaction_push_alerts_enabled = True
+        db.session.commit()
+
+        subscriptions = get_active_push_subscriptions(user)
+        return jsonify(
+            {
+                "message": "Transaction alerts enabled for this device.",
+                "user": serialize_user(user),
+                "subscriptionCount": len(subscriptions),
+                "subscriptions": [serialize_push_subscription(item) for item in subscriptions],
+            }
+        )
+
+    @app.post("/api/push/unsubscribe")
+    def push_unsubscribe():
+        user = get_current_user()
+        if not user:
+            return jsonify({"message": "You must be logged in to disable transaction alerts."}), 401
+
+        payload = request.get_json(silent=True) or {}
+        endpoint = (payload.get("endpoint") or "").strip()
+
+        if endpoint:
+            subscription = db.session.execute(
+                db.select(PushSubscription).filter_by(user_id=user.id, endpoint=endpoint)
+            ).scalar_one_or_none()
+            if subscription:
+                subscription.is_active = False
+                subscription.last_seen_at = datetime.utcnow()
+        else:
+            subscriptions = get_active_push_subscriptions(user)
+            for subscription in subscriptions:
+                subscription.is_active = False
+                subscription.last_seen_at = datetime.utcnow()
+
+        remaining_active = db.session.execute(
+            db.select(func.count(PushSubscription.id)).filter_by(user_id=user.id, is_active=True)
+        ).scalar_one()
+        user.transaction_push_alerts_enabled = bool(int(remaining_active))
+        db.session.commit()
+
+        subscriptions = get_active_push_subscriptions(user)
+        return jsonify(
+            {
+                "message": "Transaction alerts disabled for this device.",
+                "user": serialize_user(user),
+                "subscriptionCount": len(subscriptions),
+                "subscriptions": [serialize_push_subscription(item) for item in subscriptions],
+            }
+        )
+
+    @app.post("/api/push/test")
+    def push_test():
+        user = get_current_user()
+        if not user:
+            return jsonify({"message": "You must be logged in to send a test alert."}), 401
+        if not push_notifications_configured():
+            return jsonify({"message": "Push notifications are not configured yet."}), 503
+
+        send_result = send_push_to_user(
+            user,
+            {
+                "title": "Largent test alert",
+                "body": "Push is set up. When new bank activity is ready, it can show up here.",
+                "url": f"{(app.config.get('APP_BASE_URL') or '').rstrip('/')}/?source=push-test",
+                "tag": "largent-test-alert",
+            },
+        )
+        db.session.commit()
+
+        if send_result["sent"] <= 0:
+            return jsonify({"message": send_result["errors"][0] if send_result["errors"] else "No active push subscriptions were available."}), 400
+
+        return jsonify(
+            {
+                "message": "Test alert sent.",
+                "sent": send_result["sent"],
+                "deactivated": send_result["deactivated"],
             }
         )
 
