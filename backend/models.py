@@ -339,6 +339,9 @@ class UserEntitlement(db.Model):
     user_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), primary_key=True)
     premium_access: Mapped[bool] = mapped_column(default=False, nullable=False)
     bank_sync_enabled: Mapped[bool] = mapped_column(default=False, nullable=False)
+    admin_granted: Mapped[bool] = mapped_column(default=False, nullable=False)
+    admin_granted_until: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    admin_granted_by: Mapped[str | None] = mapped_column(String(255))
     max_linked_accounts: Mapped[int] = mapped_column(Integer, default=2, nullable=False)
     source: Mapped[str] = mapped_column(String(30), nullable=False, default="system")
     updated_at: Mapped[datetime] = mapped_column(

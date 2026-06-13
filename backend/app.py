@@ -235,6 +235,9 @@ def create_app() -> Flask:
                       user_id uuid primary key references users(id) on delete cascade,
                       premium_access boolean not null default false,
                       bank_sync_enabled boolean not null default false,
+                      admin_granted boolean not null default false,
+                      admin_granted_until timestamptz,
+                      admin_granted_by varchar(255),
                       max_linked_accounts integer not null default 2,
                       source varchar(30) not null default 'system',
                       updated_at timestamptz not null default now()
@@ -354,6 +357,50 @@ def create_app() -> Flask:
         )
         db.session.commit()
         click.echo("Banking and billing schema synced.")
+
+    @app.cli.command("sync-admin-grants-schema")
+    def sync_admin_grants_schema_command():
+        raw_connection = db.engine.raw_connection()
+        try:
+            with raw_connection.cursor() as cursor:
+                cursor.execute(
+                    """
+                    alter table user_entitlements
+                      add column if not exists admin_granted boolean not null default false;
+                    alter table user_entitlements
+                      add column if not exists admin_granted_until timestamptz;
+                    alter table user_entitlements
+                      add column if not exists admin_granted_by varchar(255);
+                    """
+                )
+            raw_connection.commit()
+        finally:
+            raw_connection.close()
+
+        click.echo("Admin grant schema synced.")
+
+    @app.cli.command("grant-admin-premium")
+    @click.option("--email", required=True, help="User email to grant premium access to.")
+    @click.option("--granted-by", default="owner", show_default=True, help="Identifier for who granted access.")
+    @click.option("--days", type=int, default=None, help="Optional number of days. Omit for no expiration.")
+    def grant_admin_premium_command(email: str, granted_by: str, days: int | None):
+        normalized_email = (email or "").strip().lower()
+        user = db.session.execute(db.select(User).filter_by(email=normalized_email)).scalar_one_or_none()
+        if not user:
+            raise click.ClickException(f"No user found for {normalized_email}.")
+
+        entitlement = get_user_entitlement(user, create_if_missing=True)
+        entitlement.admin_granted = True
+        entitlement.admin_granted_until = datetime.utcnow() + timedelta(days=days) if days is not None else None
+        entitlement.admin_granted_by = granted_by
+        entitlement.premium_access = True
+        entitlement.bank_sync_enabled = True
+        entitlement.max_linked_accounts = 2
+        entitlement.source = "admin_grant"
+        db.session.commit()
+
+        duration_label = f"{days} day(s)" if days is not None else "no expiration"
+        click.echo(f"Admin premium granted to {normalized_email} ({duration_label}).")
 
     @app.cli.command("sync-promo-code-schema")
     def sync_promo_code_schema_command():
@@ -948,6 +995,13 @@ def create_app() -> Flask:
             .first()
         )
 
+    def admin_grant_is_active(entitlement: UserEntitlement | None, now: datetime | None = None) -> bool:
+        if not entitlement or not entitlement.admin_granted:
+            return False
+        if entitlement.admin_granted_until is None:
+            return True
+        return entitlement.admin_granted_until > (now or datetime.utcnow())
+
     def normalize_promo_code(raw_code: str | None) -> str:
         return "-".join((raw_code or "").strip().upper().split())
 
@@ -966,6 +1020,7 @@ def create_app() -> Flask:
         now = datetime.utcnow()
         subscription = get_active_subscription(user)
         active_promo = get_active_promo_redemption(user)
+        entitlement = get_user_entitlement(user, create_if_missing=True)
 
         if active_promo and active_promo.granted_until and active_promo.granted_until <= now:
             expire_promo_redemption(active_promo)
@@ -975,13 +1030,20 @@ def create_app() -> Flask:
             entitlement = update_user_entitlement_from_subscription(user, subscription)
             return entitlement, subscription, active_promo
 
-        entitlement = get_user_entitlement(user, create_if_missing=True)
+        if admin_grant_is_active(entitlement, now):
+            entitlement.premium_access = True
+            entitlement.bank_sync_enabled = True
+            entitlement.max_linked_accounts = 2
+            entitlement.source = "admin_grant"
+            return entitlement, subscription, active_promo
+
         if active_promo:
             entitlement.premium_access = True
             entitlement.bank_sync_enabled = True
             entitlement.max_linked_accounts = 2
             entitlement.source = "promo_code"
         else:
+            entitlement.admin_granted = False if entitlement.admin_granted_until and entitlement.admin_granted_until <= now else entitlement.admin_granted
             entitlement.premium_access = False
             entitlement.bank_sync_enabled = False
             entitlement.max_linked_accounts = 2
