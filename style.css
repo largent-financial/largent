@@ -2411,6 +2411,22 @@ h3 {
   display: block;
 }
 
+.review-pending-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  margin-left: 8px;
+  padding: 4px 8px;
+  border-radius: 999px;
+  background: rgba(255, 214, 102, 0.22);
+  color: #8a5a00;
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+  vertical-align: middle;
+}
+
 .review-item-side {
   display: grid;
   justify-items: end;

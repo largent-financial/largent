@@ -90,6 +90,7 @@ class User(TimestampMixin, db.Model):
     monthly_summary_emails_enabled: Mapped[bool] = mapped_column(default=True, nullable=False)
     security_emails_enabled: Mapped[bool] = mapped_column(default=True, nullable=False)
     transaction_push_alerts_enabled: Mapped[bool] = mapped_column(default=False, nullable=False)
+    instant_transaction_alerts_enabled: Mapped[bool] = mapped_column(default=True, nullable=False)
     email_verified_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     last_login_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     pw_code_hash: Mapped[str | None] = mapped_column(String(255))

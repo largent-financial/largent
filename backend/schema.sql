@@ -31,6 +31,7 @@ create table users (
   monthly_summary_emails_enabled boolean not null default true,
   security_emails_enabled boolean not null default true,
   transaction_push_alerts_enabled boolean not null default false,
+  instant_transaction_alerts_enabled boolean not null default true,
   email_verified_at timestamptz,
   last_login_at timestamptz,
   pw_code_hash text,

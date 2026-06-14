@@ -155,7 +155,8 @@ def create_app() -> Flask:
                 cursor.execute(
                     """
                     alter table users
-                    add column if not exists transaction_push_alerts_enabled boolean not null default false
+                    add column if not exists transaction_push_alerts_enabled boolean not null default false,
+                    add column if not exists instant_transaction_alerts_enabled boolean not null default true
                     """
                 )
                 cursor.execute(
@@ -575,6 +576,7 @@ def create_app() -> Flask:
             "monthlySummaryEmailsEnabled": user.monthly_summary_emails_enabled,
             "securityEmailsEnabled": user.security_emails_enabled,
             "transactionPushAlertsEnabled": user.transaction_push_alerts_enabled,
+            "instantTransactionAlertsEnabled": user.instant_transaction_alerts_enabled,
         }
 
     def serialize_subscription(subscription: UserSubscription | None):
@@ -1266,12 +1268,18 @@ def create_app() -> Flask:
             return value.date()
         return datetime.strptime(value, "%Y-%m-%d").date()
 
-    def get_plaid_review_target_status(transaction: PlaidTransactionRaw, budget: MonthlyBudget | None) -> str:
+    def get_plaid_review_target_status(transaction: PlaidTransactionRaw, user: User | None, budget: MonthlyBudget | None) -> str:
         if transaction.removed_at is not None:
             return PLAID_REVIEW_STATUS_REMOVED
         if transaction.amount_cents <= 0:
             return PLAID_REVIEW_STATUS_OUT_OF_SCOPE
-        if transaction.pending:
+        if transaction.pending and not (
+            user
+            and user.instant_transaction_alerts_enabled
+            and user.entitlement
+            and user.entitlement.premium_access
+            and user.entitlement.bank_sync_enabled
+        ):
             return PLAID_REVIEW_STATUS_OUT_OF_SCOPE
         transaction_date = transaction.posted_date or transaction.authorized_date
         if not transaction_date or not budget:
@@ -1280,9 +1288,9 @@ def create_app() -> Flask:
             return PLAID_REVIEW_STATUS_PENDING
         return PLAID_REVIEW_STATUS_OUT_OF_SCOPE
 
-    def sync_plaid_review_for_transaction(transaction: PlaidTransactionRaw, budget: MonthlyBudget | None):
+    def sync_plaid_review_for_transaction(transaction: PlaidTransactionRaw, user: User | None, budget: MonthlyBudget | None):
         review = transaction.review
-        target_status = get_plaid_review_target_status(transaction, budget)
+        target_status = get_plaid_review_target_status(transaction, user, budget)
         budget_id = budget.id if budget else None
 
         if target_status == PLAID_REVIEW_STATUS_PENDING:
@@ -1327,6 +1335,28 @@ def create_app() -> Flask:
             review.status = target_status
             review.monthly_budget_id = budget_id
         return review, False
+
+    def migrate_pending_review_to_posted_transaction(
+        pending_transaction: PlaidTransactionRaw,
+        posted_transaction: PlaidTransactionRaw,
+        budget: MonthlyBudget | None,
+    ) -> PlaidTransactionReview | None:
+        review = pending_transaction.review
+        if not review or posted_transaction.review or pending_transaction.id == posted_transaction.id:
+            return None
+
+        review.plaid_transaction = posted_transaction
+        review.monthly_budget_id = budget.id if budget else review.monthly_budget_id
+        review.memo = review.memo or posted_transaction.merchant_name or posted_transaction.name
+
+        if review.ledger_transaction:
+            review.ledger_transaction.amount_cents = posted_transaction.amount_cents
+            review.ledger_transaction.purchased_on = posted_transaction.posted_date or posted_transaction.authorized_date or review.ledger_transaction.purchased_on
+            if not review.ledger_transaction.memo:
+                review.ledger_transaction.memo = review.memo
+
+        pending_transaction.removed_at = pending_transaction.removed_at or datetime.utcnow()
+        return review
 
     def summarize_plaid_reviews(user: User, budget: MonthlyBudget | None):
         base_summary = {
@@ -1373,6 +1403,7 @@ def create_app() -> Flask:
 
     def sync_transactions_for_item(item: PlaidItem, budget: MonthlyBudget | None):
         access_token = decrypt_plaid_access_token(item.plaid_access_token_encrypted)
+        user = db.session.get(User, item.user_id)
         cursor = item.sync_cursor
         next_cursor = cursor
         has_more = True
@@ -1452,12 +1483,21 @@ def create_app() -> Flask:
                     db.select(PlaidTransactionRaw).filter_by(plaid_transaction_id=pending_transaction_id)
                 ).scalar_one_or_none()
                 if linked_pending_transaction and linked_pending_transaction.id != plaid_transaction.id:
+                    migrated_review = migrate_pending_review_to_posted_transaction(
+                        linked_pending_transaction,
+                        plaid_transaction,
+                        budget,
+                    )
                     linked_pending_transaction.removed_at = linked_pending_transaction.removed_at or datetime.utcnow()
-                    if linked_pending_transaction.review and linked_pending_transaction.review.status in PLAID_ACTIONABLE_REVIEW_STATUSES:
+                    if (
+                        not migrated_review
+                        and linked_pending_transaction.review
+                        and linked_pending_transaction.review.status in PLAID_ACTIONABLE_REVIEW_STATUSES
+                    ):
                         linked_pending_transaction.review.status = PLAID_REVIEW_STATUS_DUPLICATE
                         linked_pending_transaction.review.reviewed_at = datetime.utcnow()
 
-            _, review_created = sync_plaid_review_for_transaction(plaid_transaction, budget)
+            _, review_created = sync_plaid_review_for_transaction(plaid_transaction, user, budget)
             if review_created:
                 queued_reviews += 1
                 new_reviews.append(
@@ -1477,6 +1517,7 @@ def create_app() -> Flask:
                         ),
                         "institutionName": item.institution_name,
                         "accountName": plaid_account.name,
+                        "pending": plaid_transaction.pending,
                     }
                 )
 
@@ -1533,7 +1574,11 @@ def create_app() -> Flask:
             )
             return {
                 "title": "New purchase detected",
-                "body": f"{amount_label} at {purchase_name} is ready to categorize.",
+                "body": (
+                    f"{amount_label} at {purchase_name} is ready to categorize."
+                    if not review.get("pending")
+                    else f"{amount_label} at {purchase_name} just came through and is ready to categorize."
+                ),
                 "url": single_target_url,
                 "tag": "largent-review-alert",
                 "data": {
@@ -3045,6 +3090,7 @@ def create_app() -> Flask:
         email = (payload.get("email") or "").strip().lower()
         monthly_summary_emails_enabled = payload.get("monthlySummaryEmailsEnabled")
         security_emails_enabled = payload.get("securityEmailsEnabled")
+        instant_transaction_alerts_enabled = payload.get("instantTransactionAlertsEnabled")
 
         if not first_name or not last_name or not email:
             return jsonify({"message": "First name, last name, and email are all required."}), 400
@@ -3062,6 +3108,8 @@ def create_app() -> Flask:
             user.monthly_summary_emails_enabled = bool(monthly_summary_emails_enabled)
         if security_emails_enabled is not None:
             user.security_emails_enabled = bool(security_emails_enabled)
+        if instant_transaction_alerts_enabled is not None:
+            user.instant_transaction_alerts_enabled = bool(instant_transaction_alerts_enabled)
         db.session.commit()
 
         return jsonify({"message": "Account updated successfully.", "user": serialize_user(user)})

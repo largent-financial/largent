@@ -14,6 +14,9 @@ const profileAccountFeedback = document.getElementById('profile-account-feedback
 const profileAccountSaveButton = document.getElementById('profile-account-save-button');
 const transactionPushToggle = document.getElementById('transaction-push-toggle');
 const transactionAlertsDetail = document.getElementById('transaction-alerts-detail');
+const instantAlertsRow = document.getElementById('instant-alerts-row');
+const instantAlertsToggle = document.getElementById('instant-alerts-toggle');
+const instantAlertsDetail = document.getElementById('instant-alerts-detail');
 const transactionPushTestButton = document.getElementById('transaction-push-test-button');
 const profileResetPasswordButton = document.getElementById('profile-reset-password-button');
 const profileBillingSummary = document.getElementById('profile-billing-summary');
@@ -2349,7 +2352,7 @@ function renderReviewQueue() {
       return `
         <article class="review-item">
           <div class="review-item-copy">
-            <strong>${transaction.merchantName || transaction.name}</strong>
+            <strong>${transaction.merchantName || transaction.name}${transaction.pending ? ' <span class="review-pending-badge">Pending</span>' : ''}</strong>
             <span>${formatHistoryDate(transaction.date)} · ${transaction.institutionName || 'Connected bank'}${transaction.accountMask ? ` •••• ${transaction.accountMask}` : ''}</span>
           </div>
           <div class="review-item-side">
@@ -2381,10 +2384,12 @@ function renderReviewSheet() {
   }
 
   const transaction = activeReview.transaction;
-  reviewSheetCopy.textContent = `${formatCurrencyPrecise(transaction.amount)} from ${transaction.merchantName || transaction.name} on ${formatHistoryDate(transaction.date)}.`;
+  reviewSheetCopy.textContent = transaction.pending
+    ? `${formatCurrencyPrecise(transaction.amount)} from ${transaction.merchantName || transaction.name} is still pending, so the amount or merchant may update when it posts.`
+    : `${formatCurrencyPrecise(transaction.amount)} from ${transaction.merchantName || transaction.name} on ${formatHistoryDate(transaction.date)}.`;
   reviewSheetTransaction.innerHTML = `
     <div class="review-sheet-transaction-copy">
-      <strong>${transaction.merchantName || transaction.name}</strong>
+      <strong>${transaction.merchantName || transaction.name}${transaction.pending ? ' <span class="review-pending-badge">Pending</span>' : ''}</strong>
       <span>${transaction.institutionName || 'Connected bank'}${transaction.accountName ? ` · ${transaction.accountName}` : ''}</span>
     </div>
     <strong>${formatCurrencyPrecise(transaction.amount)}</strong>
@@ -2933,6 +2938,11 @@ function renderProfileAccountPanel() {
     return;
   }
 
+  const premiumWithBankSync = Boolean(
+    profileState.premium?.entitlement?.premiumAccess &&
+    profileState.premium?.entitlement?.bankSyncEnabled
+  );
+
   profileAccountForm.elements.firstName.value = currentUser.firstName || '';
   profileAccountForm.elements.lastName.value = currentUser.lastName || '';
   profileAccountForm.elements.email.value = currentUser.email || '';
@@ -2940,6 +2950,17 @@ function renderProfileAccountPanel() {
   profileAccountForm.elements.securityEmailsEnabled.checked = Boolean(currentUser.securityEmailsEnabled);
   if (profileAccountForm.elements.transactionPushAlertsEnabled) {
     profileAccountForm.elements.transactionPushAlertsEnabled.checked = Boolean(currentUser.transactionPushAlertsEnabled && pushState.subscription);
+  }
+  if (instantAlertsRow) {
+    instantAlertsRow.hidden = !premiumWithBankSync;
+  }
+  if (instantAlertsToggle) {
+    instantAlertsToggle.checked = currentUser.instantTransactionAlertsEnabled !== false;
+  }
+  if (instantAlertsDetail) {
+    instantAlertsDetail.textContent = premiumWithBankSync
+      ? 'Send every bank purchase alert immediately so it’s easier to remember and choose a category.'
+      : 'Available when Premium bank sync is active.';
   }
   renderPushAlertsUI();
 }
@@ -3484,6 +3505,7 @@ async function handleAccountProfileSave(event) {
   const email = profileAccountForm.elements.email.value.trim().toLowerCase();
   const monthlySummaryEmailsEnabled = profileAccountForm.elements.monthlySummaryEmailsEnabled.checked;
   const securityEmailsEnabled = profileAccountForm.elements.securityEmailsEnabled.checked;
+  const instantTransactionAlertsEnabled = profileAccountForm.elements.instantTransactionAlertsEnabled?.checked ?? true;
 
   if (!firstName || !lastName || !email) {
     setProfileFeedback(profileAccountFeedback, 'Please complete your first name, last name, and email.', 'error');
@@ -3495,7 +3517,8 @@ async function handleAccountProfileSave(event) {
     lastName,
     email,
     monthlySummaryEmailsEnabled,
-    securityEmailsEnabled
+    securityEmailsEnabled,
+    instantTransactionAlertsEnabled
   };
   setProfileFeedback(profileAccountConfirmFeedback, '');
   openModal(profileAccountConfirmModal);
