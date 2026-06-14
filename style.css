@@ -3298,10 +3298,48 @@ h3 {
     padding: 10px;
   }
 
-  .plaid-card,
-  .review-card {
-    padding: 12px;
-  }
+.plaid-card,
+.review-card {
+  padding: 12px;
+}
+
+.plaid-toggle-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.plaid-collapse-button {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.plaid-collapse-chevron {
+  margin-left: auto;
+  font-size: 1.1rem;
+  color: var(--muted);
+  transform: rotate(0deg);
+  transition: transform 180ms ease, color 180ms ease;
+}
+
+.plaid-card-expanded .plaid-collapse-chevron {
+  transform: rotate(180deg);
+  color: var(--primary-deep);
+}
+
+.plaid-card-body {
+  margin-top: 12px;
+}
 
   .header-dropdown {
     min-width: 190px;

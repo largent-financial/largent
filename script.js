@@ -93,6 +93,8 @@ const dashboardLeftToSpend = document.getElementById('dashboard-left-to-spend');
 const dashboardStatusPill = document.getElementById('dashboard-status-pill');
 const dashboardBackButton = document.getElementById('dashboard-back');
 const plaidCard = document.getElementById('plaid-card');
+const plaidCollapseButton = document.getElementById('plaid-collapse-button');
+const plaidCardBody = document.getElementById('plaid-card-body');
 const plaidConnectButton = document.getElementById('plaid-connect-button');
 const plaidSummaryRow = document.getElementById('plaid-summary-row');
 const plaidConnectedList = document.getElementById('plaid-connected-list');
@@ -220,6 +222,7 @@ let pushState = {
   vapidPublicKey: null,
 };
 let addSpendingExpanded = false;
+let plaidCardExpanded = false;
 let pendingReviewDeepLink = null;
 let instantPreviewDeepLink = false;
 let persistedAppState = {
@@ -2147,7 +2150,7 @@ function setPlaidFeedback(message = '', tone = 'neutral') {
 }
 
 function renderPlaidSection() {
-  if (!plaidSummaryRow || !plaidConnectedList || !plaidConnectButton || !plaidCard) {
+  if (!plaidSummaryRow || !plaidConnectedList || !plaidConnectButton || !plaidCard || !plaidCardBody || !plaidCollapseButton) {
     return;
   }
 
@@ -2160,6 +2163,9 @@ function renderPlaidSection() {
   const toggleActive = premiumActive && activeConnected > 0;
 
   plaidCard.dataset.premiumState = premiumActive ? 'premium' : 'free';
+  plaidCard.classList.toggle('plaid-card-expanded', plaidCardExpanded);
+  plaidCollapseButton.setAttribute('aria-expanded', String(plaidCardExpanded));
+  plaidCardBody.hidden = !plaidCardExpanded;
   plaidConnectButton.disabled = plaidState.loading || plaidState.connecting;
   plaidConnectButton.classList.toggle('bank-sync-toggle-active', toggleActive);
   plaidConnectButton.setAttribute('aria-checked', String(toggleActive));
@@ -4411,6 +4417,10 @@ plaidConnectedList?.addEventListener('click', event => {
   if (disconnectButton) {
     openPlaidDisconnectModal(disconnectButton.dataset.disconnectPlaidAccount);
   }
+});
+plaidCollapseButton?.addEventListener('click', () => {
+  plaidCardExpanded = !plaidCardExpanded;
+  renderPlaidSection();
 });
 addSpendingToggle?.addEventListener('click', () => {
   setAddSpendingExpanded(!addSpendingExpanded);

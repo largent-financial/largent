@@ -427,13 +427,16 @@
         <section class="dashboard-grid" aria-label="Monthly budget dashboard">
           <article class="plaid-card card" id="plaid-card" aria-labelledby="plaid-sync-title">
             <div class="plaid-toggle-row">
-              <div class="plaid-brand-mark">
-                <img src="./plaid transparent.png" alt="Plaid logo" />
-              </div>
-              <div class="plaid-toggle-copy">
-                <h3 id="plaid-sync-title">Connect to your bank</h3>
-                <p class="plaid-powered">Powered by Plaid</p>
-              </div>
+              <button class="plaid-collapse-button" type="button" id="plaid-collapse-button" aria-expanded="false" aria-controls="plaid-card-body">
+                <div class="plaid-brand-mark">
+                  <img src="./plaid transparent.png" alt="Plaid logo" />
+                </div>
+                <div class="plaid-toggle-copy">
+                  <h3 id="plaid-sync-title">Connect to your bank</h3>
+                  <p class="plaid-powered">Powered by Plaid</p>
+                </div>
+                <span class="plaid-collapse-chevron" aria-hidden="true">⌄</span>
+              </button>
               <button class="bank-sync-toggle" type="button" id="plaid-connect-button" role="switch" aria-checked="false" aria-label="Toggle bank sync">
                 <span class="bank-sync-toggle-track" aria-hidden="true">
                   <span class="bank-sync-toggle-state bank-sync-toggle-state-on">On</span>
@@ -442,10 +445,11 @@
                 </span>
               </button>
             </div>
-
-            <div class="plaid-summary-row" id="plaid-summary-row" aria-live="polite"></div>
-            <p class="form-feedback plaid-feedback" id="plaid-feedback" role="status" aria-live="polite"></p>
-            <div class="plaid-connected-list" id="plaid-connected-list"></div>
+            <div class="plaid-card-body" id="plaid-card-body" hidden>
+              <div class="plaid-summary-row" id="plaid-summary-row" aria-live="polite"></div>
+              <p class="form-feedback plaid-feedback" id="plaid-feedback" role="status" aria-live="polite"></p>
+              <div class="plaid-connected-list" id="plaid-connected-list"></div>
+            </div>
           </article>
 
           <article class="transaction-card card" aria-labelledby="transaction-entry-title">
