@@ -18,6 +18,7 @@ const instantAlertsRow = document.getElementById('instant-alerts-row');
 const instantAlertsToggle = document.getElementById('instant-alerts-toggle');
 const instantAlertsDetail = document.getElementById('instant-alerts-detail');
 const transactionPushTestButton = document.getElementById('transaction-push-test-button');
+const instantAlertPreviewButton = document.getElementById('instant-alert-preview-button');
 const profileResetPasswordButton = document.getElementById('profile-reset-password-button');
 const profileBillingSummary = document.getElementById('profile-billing-summary');
 const profileBillingFeedback = document.getElementById('profile-billing-feedback');
@@ -215,10 +216,12 @@ let pushState = {
   subscriptionCount: 0,
   loading: false,
   sendingTest: false,
+  sendingPreview: false,
   vapidPublicKey: null,
 };
 let addSpendingExpanded = false;
 let pendingReviewDeepLink = null;
+let instantPreviewDeepLink = false;
 let persistedAppState = {
   incomeProfile: null,
   monthlyBudget: null,
@@ -386,12 +389,22 @@ function renderPushAlertsUI() {
   const configured = pushState.configured;
   const subscribed = Boolean(pushState.subscription);
   const enabled = Boolean(currentUser?.transactionPushAlertsEnabled && subscribed);
+  const premiumWithBankSync = Boolean(
+    profileState.premium?.entitlement?.premiumAccess &&
+    profileState.premium?.entitlement?.bankSyncEnabled
+  );
+  const instantEnabled = Boolean(currentUser?.instantTransactionAlertsEnabled);
 
   transactionPushToggle.checked = enabled;
   transactionPushToggle.disabled = !currentUser || pushState.loading || !supported || !configured;
   transactionPushTestButton.hidden = !supported || !configured;
   transactionPushTestButton.disabled = !enabled || pushState.sendingTest;
   transactionPushTestButton.textContent = pushState.sendingTest ? 'Sending…' : 'Send test alert';
+  if (instantAlertPreviewButton) {
+    instantAlertPreviewButton.hidden = !supported || !configured || !premiumWithBankSync || !instantEnabled;
+    instantAlertPreviewButton.disabled = !enabled || pushState.sendingPreview;
+    instantAlertPreviewButton.textContent = pushState.sendingPreview ? 'Sending…' : 'Preview instant alert';
+  }
 
   if (!supported) {
     transactionAlertsDetail.textContent = 'This browser does not support push alerts here yet. On iPhone, add Largent to your Home Screen first.';
@@ -595,6 +608,26 @@ async function sendTransactionPushTest() {
     setProfileFeedback(profileAccountFeedback, error.message || 'We could not send a test alert.', 'error');
   } finally {
     pushState.sendingTest = false;
+    renderPushAlertsUI();
+  }
+}
+
+async function sendInstantAlertPreview() {
+  if (!currentUser || pushState.sendingPreview) {
+    return;
+  }
+
+  pushState.sendingPreview = true;
+  renderPushAlertsUI();
+  setProfileFeedback(profileAccountFeedback, '');
+
+  try {
+    const payload = await apiRequest('/api/push/instant-preview', { method: 'POST' });
+    setProfileFeedback(profileAccountFeedback, payload.message || 'Preview alert sent.', 'success');
+  } catch (error) {
+    setProfileFeedback(profileAccountFeedback, error.message || 'We could not send the instant alert preview.', 'error');
+  } finally {
+    pushState.sendingPreview = false;
     renderPushAlertsUI();
   }
 }
@@ -804,14 +837,16 @@ function readReviewDeepLinkFromUrl() {
   const params = new URLSearchParams(window.location.search);
   const reviewQueueRequested = params.get('reviewQueue') === '1';
   const reviewId = params.get('review');
+  instantPreviewDeepLink = params.get('instantPreview') === '1';
 
-  if (!reviewQueueRequested && !reviewId) {
+  if (!reviewQueueRequested && !reviewId && !instantPreviewDeepLink) {
     return null;
   }
 
   return {
     reviewQueueRequested,
-    reviewId: reviewId || null
+    reviewId: reviewId || null,
+    instantPreview: instantPreviewDeepLink
   };
 }
 
@@ -819,6 +854,7 @@ function clearReviewDeepLinkFromUrl() {
   const url = new URL(window.location.href);
   url.searchParams.delete('reviewQueue');
   url.searchParams.delete('review');
+  url.searchParams.delete('instantPreview');
   url.searchParams.delete('source');
   const nextUrl = `${url.pathname}${url.search}${url.hash}`;
   window.history.replaceState({}, document.title, nextUrl);
@@ -832,6 +868,12 @@ function consumeReviewDeepLink() {
 function tryOpenReviewDeepLink() {
   if (!pendingReviewDeepLink || !dashboardState || !currentUser) {
     return false;
+  }
+
+  if (pendingReviewDeepLink.instantPreview) {
+    openInstantAlertPreviewSheet();
+    consumeReviewDeepLink();
+    return true;
   }
 
   if (!isPremiumActive()) {
@@ -2296,6 +2338,31 @@ function setReviewFeedback(message = '', tone = 'neutral') {
 }
 
 function getActiveReviewItem() {
+  if (reviewState.activeReviewId === 'instant-preview') {
+    return {
+      id: 'instant-preview',
+      status: 'preview',
+      memo: 'Whole Foods',
+      budgetCategoryId: reviewState.selectedCategoryId,
+      preview: true,
+      suggestedCategoryTitle: 'Groceries',
+      transaction: {
+        id: 'instant-preview-transaction',
+        plaidTransactionId: null,
+        name: 'Whole Foods Market',
+        merchantName: 'Whole Foods',
+        amount: 42.18,
+        date: new Date().toISOString().split('T')[0],
+        pending: true,
+        paymentChannel: 'in store',
+        accountId: null,
+        accountName: 'Checking',
+        accountMask: '4242',
+        accountSubtype: 'checking',
+        institutionName: 'Connected bank',
+      },
+    };
+  }
   return reviewState.items.find(item => item.id === reviewState.activeReviewId) || null;
 }
 
@@ -2384,13 +2451,15 @@ function renderReviewSheet() {
   }
 
   const transaction = activeReview.transaction;
-  reviewSheetCopy.textContent = transaction.pending
-    ? `${formatCurrencyPrecise(transaction.amount)} from ${transaction.merchantName || transaction.name} is still pending, so the amount or merchant may update when it posts.`
-    : `${formatCurrencyPrecise(transaction.amount)} from ${transaction.merchantName || transaction.name} on ${formatHistoryDate(transaction.date)}.`;
+  reviewSheetCopy.textContent = activeReview.preview
+    ? `${formatCurrencyPrecise(transaction.amount)} from ${transaction.merchantName || transaction.name} is a sample instant alert preview.`
+    : transaction.pending
+      ? `${formatCurrencyPrecise(transaction.amount)} from ${transaction.merchantName || transaction.name} is still pending, so the amount or merchant may update when it posts.`
+      : `${formatCurrencyPrecise(transaction.amount)} from ${transaction.merchantName || transaction.name} on ${formatHistoryDate(transaction.date)}.`;
   reviewSheetTransaction.innerHTML = `
     <div class="review-sheet-transaction-copy">
       <strong>${transaction.merchantName || transaction.name}${transaction.pending ? ' <span class="review-pending-badge">Pending</span>' : ''}</strong>
-      <span>${transaction.institutionName || 'Connected bank'}${transaction.accountName ? ` · ${transaction.accountName}` : ''}</span>
+      <span>${transaction.institutionName || 'Connected bank'}${transaction.accountName ? ` · ${transaction.accountName}` : ''}${activeReview.preview ? ' · Sample instant alert' : ''}</span>
     </div>
     <strong>${formatCurrencyPrecise(transaction.amount)}</strong>
   `;
@@ -2407,7 +2476,7 @@ function renderReviewSheet() {
       >
         <span class="review-category-copy">
           <strong>${category.title}</strong>
-          <span>${formatCurrencyPrecise(category.allocated)}</span>
+          <span>${formatCurrencyPrecise(category.allocated)}${activeReview.preview && category.title === activeReview.suggestedCategoryTitle ? ' · Recommended' : ''}</span>
         </span>
       </button>
     `)
@@ -2415,12 +2484,28 @@ function renderReviewSheet() {
 
   reviewSheetMemo.value = activeReview.memo || transaction.merchantName || transaction.name || '';
   reviewSheetFeedback.textContent = '';
+  if (reviewSheetDismiss) {
+    reviewSheetDismiss.textContent = activeReview.preview ? 'Dismiss preview' : 'Dismiss';
+  }
+  if (reviewSheetSave) {
+    reviewSheetSave.textContent = activeReview.preview ? 'Save preview' : 'Save to category';
+  }
 }
 
 function openReviewSheet(reviewId) {
   reviewState.activeReviewId = reviewId;
   const firstCategoryId = getDashboardCategories().find(category => category.allocated > 0 && category.title.trim())?.id || null;
   reviewState.selectedCategoryId = getActiveReviewItem()?.budgetCategoryId || firstCategoryId;
+  renderReviewSheet();
+  openModal(reviewSheetModal);
+}
+
+function openInstantAlertPreviewSheet() {
+  const suggestedCategory = getDashboardCategories().find(category => category.title === 'Groceries' && category.allocated > 0)
+    || getDashboardCategories().find(category => category.allocated > 0 && category.title.trim())
+    || null;
+  reviewState.activeReviewId = 'instant-preview';
+  reviewState.selectedCategoryId = suggestedCategory?.id || null;
   renderReviewSheet();
   openModal(reviewSheetModal);
 }
@@ -2579,6 +2664,13 @@ async function approveActiveReview() {
     return;
   }
 
+  if (activeReview.preview) {
+    reviewState.success = 'Preview saved. Real instant alerts will work like this when new bank purchases come in.';
+    renderReviewQueue();
+    closeReviewSheet();
+    return;
+  }
+
   reviewState.saving = true;
   if (reviewSheetSave) {
     reviewSheetSave.disabled = true;
@@ -2632,6 +2724,13 @@ async function approveActiveReview() {
 async function dismissActiveReview() {
   const activeReview = getActiveReviewItem();
   if (!activeReview) {
+    return;
+  }
+
+  if (activeReview.preview) {
+    reviewState.success = 'Preview dismissed.';
+    renderReviewQueue();
+    closeReviewSheet();
     return;
   }
 
@@ -4235,6 +4334,7 @@ profileModal?.addEventListener('click', event => {
 profileAccountForm?.addEventListener('submit', handleAccountProfileSave);
 transactionPushToggle?.addEventListener('change', handleTransactionPushToggleChange);
 transactionPushTestButton?.addEventListener('click', sendTransactionPushTest);
+instantAlertPreviewButton?.addEventListener('click', sendInstantAlertPreview);
 profileAccountConfirmCancelButton?.addEventListener('click', () => {
   profileState.pendingAccountPayload = null;
   closeModal(profileAccountConfirmModal);

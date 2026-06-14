@@ -1843,6 +1843,42 @@ def create_app() -> Flask:
             }
         )
 
+    @app.post("/api/push/instant-preview")
+    def push_instant_preview():
+        user = get_current_user()
+        if not user:
+            return jsonify({"message": "You must be logged in to preview an instant alert."}), 401
+        if not push_notifications_configured():
+            return jsonify({"message": "Push notifications are not configured yet."}), 503
+
+        entitlement, _, _ = refresh_user_premium_access(user)
+        if not entitlement or not entitlement.premium_access or not entitlement.bank_sync_enabled:
+            return jsonify({"message": "Instant alert previews are available with Premium bank sync."}), 403
+
+        app_base_url = (app.config.get("APP_BASE_URL") or "").rstrip("/")
+        send_result = send_push_to_user(
+            user,
+            {
+                "title": "New purchase detected",
+                "body": "$42.18 at Whole Foods just came through and is ready to categorize.",
+                "url": f"{app_base_url}/?instantPreview=1&source=push-preview" if app_base_url else "/?instantPreview=1&source=push-preview",
+                "tag": "largent-instant-preview",
+                "data": {"type": "instant-alert-preview"},
+            },
+        )
+        db.session.commit()
+
+        if send_result["sent"] <= 0:
+            return jsonify({"message": send_result["errors"][0] if send_result["errors"] else "No active push subscriptions were available."}), 400
+
+        return jsonify(
+            {
+                "message": "Preview alert sent.",
+                "sent": send_result["sent"],
+                "deactivated": send_result["deactivated"],
+            }
+        )
+
     @app.get("/api/premium/status")
     def premium_status():
         user = get_current_user()
