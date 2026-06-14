@@ -850,6 +850,25 @@ function readReviewDeepLinkFromUrl() {
   };
 }
 
+function refreshReviewDeepLinkFromUrl({ openDashboardIfNeeded = false } = {}) {
+  const latestIntent = readReviewDeepLinkFromUrl();
+  if (!latestIntent) {
+    return false;
+  }
+
+  pendingReviewDeepLink = latestIntent;
+
+  if (openDashboardIfNeeded && currentUser && dashboardState) {
+    showScreen('dashboard');
+  }
+
+  window.setTimeout(() => {
+    tryOpenReviewDeepLink();
+  }, 80);
+
+  return true;
+}
+
 function clearReviewDeepLinkFromUrl() {
   const url = new URL(window.location.href);
   url.searchParams.delete('reviewQueue');
@@ -4462,6 +4481,20 @@ document.addEventListener('keydown', event => {
 
   if (premiumBankModal && !premiumBankModal.hidden) {
     closePremiumBankModal();
+  }
+});
+
+window.addEventListener('focus', () => {
+  refreshReviewDeepLinkFromUrl({ openDashboardIfNeeded: true });
+});
+
+window.addEventListener('pageshow', () => {
+  refreshReviewDeepLinkFromUrl({ openDashboardIfNeeded: true });
+});
+
+document.addEventListener('visibilitychange', () => {
+  if (document.visibilityState === 'visible') {
+    refreshReviewDeepLinkFromUrl({ openDashboardIfNeeded: true });
   }
 });
 
