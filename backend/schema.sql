@@ -239,7 +239,7 @@ create table user_entitlements (
   admin_granted boolean not null default false,
   admin_granted_until timestamptz,
   admin_granted_by varchar(255),
-  max_linked_accounts integer not null default 2,
+  max_linked_accounts integer not null default 4,
   source varchar(30) not null default 'system',
   updated_at timestamptz not null default now(),
   constraint user_entitlements_reasonable_limit check (max_linked_accounts >= 0 and max_linked_accounts <= 10)

@@ -2158,7 +2158,7 @@ function renderPlaidSection() {
   const summary = plaidState.summary;
   const accounts = flattenPlaidAccounts(plaidState.items);
   const activeConnected = summary?.activeConnectedAccounts ?? accounts.length;
-  const maxLinked = summary?.maxLinkedAccounts ?? 2;
+  const maxLinked = summary?.maxLinkedAccounts ?? 4;
   const canLinkMore = summary ? Boolean(summary.canLinkMoreAccounts) : true;
   const toggleActive = premiumActive && activeConnected > 0;
 
@@ -2192,7 +2192,7 @@ function renderPlaidSection() {
         <span class="plaid-progress-fill" style="width:${progressPercent}%"></span>
       </div>
       <div class="plaid-progress-copy">
-        <span>You can connect up to 2 bank accounts to track spending from.</span>
+        <span>You can connect up to 4 bank accounts to track spending from.</span>
         <strong>${activeConnected} of ${maxLinked} connected</strong>
       </div>
     </div>
@@ -2812,9 +2812,9 @@ async function startPlaidLinkFlow() {
 
   const summary = plaidState.summary;
   const activeConnected = summary?.activeConnectedAccounts ?? flattenPlaidAccounts(plaidState.items).length;
-  const maxLinked = summary?.maxLinkedAccounts ?? 2;
+  const maxLinked = summary?.maxLinkedAccounts ?? 4;
   if (activeConnected >= maxLinked) {
-    plaidState.error = 'You already have 2 connected accounts. Use Change on one below to swap it out.';
+    plaidState.error = 'You already have 4 connected accounts. Use Change on one below to swap one out.';
     plaidState.success = '';
     renderPlaidSection();
     return;
@@ -3118,7 +3118,7 @@ function renderProfileBillingPanel() {
     </div>
     <div class="premium-feature-list">
       <div><strong>Bank sync</strong><span>${entitlement?.bankSyncEnabled ? 'Enabled' : 'Locked on free plan'}</span></div>
-      <div><strong>Connected accounts</strong><span>Up to ${entitlement?.maxLinkedAccounts ?? 2}</span></div>
+      <div><strong>Connected accounts</strong><span>Up to ${entitlement?.maxLinkedAccounts ?? 4}</span></div>
       <div><strong>Billing cycle</strong><span>${premiumActive ? 'Monthly renewal' : 'Upgrade to unlock'}</span></div>
       <div><strong>Next renewal</strong><span>${premiumActive && subscription ? renewalLabel : promoRedemption?.grantedUntil ? formatHistoryDate(promoRedemption.grantedUntil) : '—'}</span></div>
     </div>
@@ -3158,7 +3158,7 @@ function renderProfileBankingPanel() {
   const summary = plaidState.summary;
   const accounts = flattenPlaidAccounts(plaidState.items);
   const activeConnected = summary?.activeConnectedAccounts ?? accounts.length;
-  const maxLinked = summary?.maxLinkedAccounts ?? 2;
+  const maxLinked = summary?.maxLinkedAccounts ?? 4;
   const premiumRequired = summary ? Boolean(summary.premiumRequired) : false;
 
   profileBankSummary.innerHTML = `

@@ -301,7 +301,7 @@ def create_app() -> Flask:
                       admin_granted boolean not null default false,
                       admin_granted_until timestamptz,
                       admin_granted_by varchar(255),
-                      max_linked_accounts integer not null default 2,
+                      max_linked_accounts integer not null default 4,
                       source varchar(30) not null default 'system',
                       updated_at timestamptz not null default now()
                     );
@@ -458,7 +458,7 @@ def create_app() -> Flask:
         entitlement.admin_granted_by = granted_by
         entitlement.premium_access = True
         entitlement.bank_sync_enabled = True
-        entitlement.max_linked_accounts = 2
+        entitlement.max_linked_accounts = 4
         entitlement.source = "admin_grant"
         db.session.commit()
 
@@ -562,7 +562,7 @@ def create_app() -> Flask:
         entitlement = get_user_entitlement(user, create_if_missing=True)
         entitlement.premium_access = True
         entitlement.bank_sync_enabled = True
-        entitlement.max_linked_accounts = 2
+        entitlement.max_linked_accounts = 4
         entitlement.source = "manual"
         db.session.commit()
         click.echo(f"Premium access granted to {normalized_email}.")
@@ -601,7 +601,7 @@ def create_app() -> Flask:
             return {
                 "premiumAccess": False,
                 "bankSyncEnabled": False,
-                "maxLinkedAccounts": 2,
+                "maxLinkedAccounts": 4,
                 "source": "system",
             }
 
@@ -838,7 +838,7 @@ def create_app() -> Flask:
         premium_active = bool(subscription and stripe_subscription_is_active(subscription.status, subscription.cancel_at_period_end))
         entitlement.premium_access = premium_active
         entitlement.bank_sync_enabled = premium_active
-        entitlement.max_linked_accounts = 2
+        entitlement.max_linked_accounts = 4
         entitlement.source = "stripe" if premium_active else "system"
         return entitlement
 
@@ -1166,20 +1166,20 @@ def create_app() -> Flask:
         if admin_grant_is_active(entitlement, now):
             entitlement.premium_access = True
             entitlement.bank_sync_enabled = True
-            entitlement.max_linked_accounts = 2
+            entitlement.max_linked_accounts = 4
             entitlement.source = "admin_grant"
             return entitlement, subscription, active_promo
 
         if active_promo:
             entitlement.premium_access = True
             entitlement.bank_sync_enabled = True
-            entitlement.max_linked_accounts = 2
+            entitlement.max_linked_accounts = 4
             entitlement.source = "promo_code"
         else:
             entitlement.admin_granted = False if entitlement.admin_granted_until and entitlement.admin_granted_until <= now else entitlement.admin_granted
             entitlement.premium_access = False
             entitlement.bank_sync_enabled = False
-            entitlement.max_linked_accounts = 2
+            entitlement.max_linked_accounts = 4
             entitlement.source = "system"
         return entitlement, subscription, active_promo
 
@@ -1227,7 +1227,7 @@ def create_app() -> Flask:
         entitlement = get_user_entitlement(user, create_if_missing=True)
         entitlement.premium_access = True
         entitlement.bank_sync_enabled = True
-        entitlement.max_linked_accounts = 2
+        entitlement.max_linked_accounts = 4
         entitlement.source = "promo_code"
         return redemption, None
 
@@ -2021,8 +2021,8 @@ def create_app() -> Flask:
                 "promoRedemption": serialize_promo_redemption(promo_redemption),
                 "summary": {
                     "activeConnectedAccounts": active_accounts_count,
-                    "maxLinkedAccounts": entitlement.max_linked_accounts if entitlement else 2,
-                    "canLinkMoreAccounts": active_accounts_count < (entitlement.max_linked_accounts if entitlement else 2),
+                    "maxLinkedAccounts": entitlement.max_linked_accounts if entitlement else 4,
+                    "canLinkMoreAccounts": active_accounts_count < (entitlement.max_linked_accounts if entitlement else 4),
                     "premiumRequired": not (entitlement.premium_access and entitlement.bank_sync_enabled) if entitlement else True,
                 },
                 "items": [serialize_plaid_item(item) for item in items],
@@ -2044,7 +2044,7 @@ def create_app() -> Flask:
         active_accounts_count = get_active_plaid_accounts_count(user)
         if active_accounts_count >= entitlement.max_linked_accounts:
             db.session.commit()
-            return jsonify({"message": "You have already reached your 2 connected account limit."}), 403
+            return jsonify({"message": "You have already reached your 4 connected account limit."}), 403
 
         webhook_url = get_plaid_webhook_url()
         plaid_payload = {
@@ -2093,7 +2093,7 @@ def create_app() -> Flask:
         active_accounts_count = get_active_plaid_accounts_count(user)
         if active_accounts_count >= entitlement.max_linked_accounts:
             db.session.commit()
-            return jsonify({"message": "You have already reached your 2 connected account limit."}), 403
+            return jsonify({"message": "You have already reached your 4 connected account limit."}), 403
 
         try:
             exchange_response = plaid_api_request("/item/public_token/exchange", {"public_token": public_token})
@@ -2316,8 +2316,8 @@ def create_app() -> Flask:
                 "message": "Connected bank account removed.",
                 "summary": {
                     "activeConnectedAccounts": active_accounts_count,
-                    "maxLinkedAccounts": entitlement.max_linked_accounts if entitlement else 2,
-                    "canLinkMoreAccounts": active_accounts_count < (entitlement.max_linked_accounts if entitlement else 2),
+                    "maxLinkedAccounts": entitlement.max_linked_accounts if entitlement else 4,
+                    "canLinkMoreAccounts": active_accounts_count < (entitlement.max_linked_accounts if entitlement else 4),
                     "premiumRequired": not (entitlement.premium_access and entitlement.bank_sync_enabled) if entitlement else True,
                 },
                 "items": [serialize_plaid_item(item) for item in refreshed_items],

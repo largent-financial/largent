@@ -345,7 +345,7 @@ class UserEntitlement(db.Model):
     admin_granted: Mapped[bool] = mapped_column(default=False, nullable=False)
     admin_granted_until: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     admin_granted_by: Mapped[str | None] = mapped_column(String(255))
-    max_linked_accounts: Mapped[int] = mapped_column(Integer, default=2, nullable=False)
+    max_linked_accounts: Mapped[int] = mapped_column(Integer, default=4, nullable=False)
     source: Mapped[str] = mapped_column(String(30), nullable=False, default="system")
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
