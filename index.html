@@ -984,12 +984,17 @@
       <div class="review-sheet-suggestions" id="review-sheet-suggestions" hidden>
         <div class="review-sheet-suggestions-head">
           <strong>Suggested categories</strong>
-          <span>Quick picks based on this merchant.</span>
+          <span id="review-sheet-suggestions-copy">Quick picks based on this merchant.</span>
         </div>
         <div class="review-sheet-suggestions-list" id="review-sheet-suggestions-list"></div>
       </div>
 
-      <div class="review-sheet-category-list" id="review-sheet-category-list" role="radiogroup" aria-label="Budget categories"></div>
+      <button class="review-sheet-category-toggle" type="button" id="review-sheet-category-toggle" hidden aria-expanded="true" aria-controls="review-sheet-category-panel">
+        More categories
+      </button>
+      <div class="review-sheet-category-panel" id="review-sheet-category-panel">
+        <div class="review-sheet-category-list" id="review-sheet-category-list" role="radiogroup" aria-label="Budget categories"></div>
+      </div>
 
       <p class="form-feedback review-sheet-feedback" id="review-sheet-feedback" role="status" aria-live="polite"></p>
 

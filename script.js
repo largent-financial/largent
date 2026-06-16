@@ -111,6 +111,10 @@ const reviewSheetCopy = document.getElementById('review-sheet-copy');
 const reviewSheetTransaction = document.getElementById('review-sheet-transaction');
 const reviewSheetMemo = document.getElementById('review-sheet-memo');
 const reviewSheetCategoryList = document.getElementById('review-sheet-category-list');
+const reviewSheetSuggestionsCopy = document.getElementById('review-sheet-suggestions-copy');
+const reviewSheetCategoryToggle = document.getElementById('review-sheet-category-toggle');
+const reviewSheetCategoryPanel = document.getElementById('review-sheet-category-panel');
+const reviewSheetCard = reviewSheetModal?.querySelector('.bottom-sheet-card');
 const reviewSheetFeedback = document.getElementById('review-sheet-feedback');
 const reviewSheetDismiss = document.getElementById('review-sheet-dismiss');
 const reviewSheetCancel = document.getElementById('review-sheet-cancel');
@@ -220,6 +224,7 @@ let transactionEditState = {
   transactionId: null,
   saving: false
 };
+let reviewSheetCategoriesExpanded = true;
 let actionConfirmState = {
   onConfirm: null,
   saving: false
@@ -2631,7 +2636,7 @@ function renderReviewQueue() {
 function renderReviewSheet() {
   const reviewSheetSuggestions = document.getElementById('review-sheet-suggestions');
   const reviewSheetSuggestionsList = document.getElementById('review-sheet-suggestions-list');
-  if (!reviewSheetTransaction || !reviewSheetCategoryList || !reviewSheetMemo || !reviewSheetCopy || !reviewSheetFeedback || !reviewSheetSuggestions || !reviewSheetSuggestionsList) {
+  if (!reviewSheetTransaction || !reviewSheetCategoryList || !reviewSheetMemo || !reviewSheetCopy || !reviewSheetFeedback || !reviewSheetSuggestions || !reviewSheetSuggestionsList || !reviewSheetCategoryToggle || !reviewSheetCategoryPanel) {
     return;
   }
 
@@ -2641,30 +2646,54 @@ function renderReviewSheet() {
     reviewSheetCategoryList.innerHTML = '';
     reviewSheetSuggestionsList.innerHTML = '';
     reviewSheetSuggestions.hidden = true;
+    reviewSheetCategoryToggle.hidden = true;
+    reviewSheetCategoryPanel.hidden = false;
     reviewSheetMemo.value = '';
     reviewSheetFeedback.textContent = '';
+    reviewSheetModal?.removeAttribute('data-preview');
+    reviewSheetCard?.removeAttribute('data-preview');
     return;
   }
 
   const transaction = activeReview.transaction;
-  reviewSheetCopy.textContent = activeReview.preview
-    ? `${formatCurrencyPrecise(transaction.amount)} from ${transaction.merchantName || transaction.name} is a sample instant alert preview.`
+  const isPreview = Boolean(activeReview.preview);
+  reviewSheetModal?.setAttribute('data-preview', isPreview ? 'true' : 'false');
+  reviewSheetCard?.setAttribute('data-preview', isPreview ? 'true' : 'false');
+  reviewSheetCopy.textContent = isPreview
+    ? 'Pick the category you would tap when a new bank purchase alert comes in.'
     : transaction.pending
       ? `${formatCurrencyPrecise(transaction.amount)} from ${transaction.merchantName || transaction.name} is still pending, so the amount or merchant may update when it posts.`
       : `${formatCurrencyPrecise(transaction.amount)} from ${transaction.merchantName || transaction.name} on ${formatHistoryDate(transaction.date)}.`;
-  reviewSheetTransaction.innerHTML = `
-    <div class="review-sheet-transaction-copy">
-      <strong>${transaction.merchantName || transaction.name}${transaction.pending ? ' <span class="review-pending-badge">Pending</span>' : ''}</strong>
-      <span>${transaction.institutionName || 'Connected bank'}${transaction.accountName ? ` · ${transaction.accountName}` : ''}${activeReview.preview ? ' · Sample instant alert' : ''}</span>
-    </div>
-    <strong>${formatCurrencyPrecise(transaction.amount)}</strong>
-  `;
+  reviewSheetTransaction.innerHTML = isPreview
+    ? `
+      <div class="review-sheet-transaction-copy review-sheet-transaction-copy-preview">
+        <span class="review-sheet-transaction-label">Instant alert preview</span>
+        <strong>${transaction.merchantName || transaction.name}</strong>
+        <span>${transaction.institutionName || 'Connected bank'}${transaction.accountName ? ` · ${transaction.accountName}` : ''}</span>
+      </div>
+      <div class="review-sheet-transaction-amount-wrap">
+        ${transaction.pending ? '<span class="review-pending-badge">Pending</span>' : ''}
+        <strong class="review-sheet-transaction-amount">${formatCurrencyPrecise(transaction.amount)}</strong>
+      </div>
+    `
+    : `
+      <div class="review-sheet-transaction-copy">
+        <strong>${transaction.merchantName || transaction.name}${transaction.pending ? ' <span class="review-pending-badge">Pending</span>' : ''}</strong>
+        <span>${transaction.institutionName || 'Connected bank'}${transaction.accountName ? ` · ${transaction.accountName}` : ''}</span>
+      </div>
+      <strong class="review-sheet-transaction-amount">${formatCurrencyPrecise(transaction.amount)}</strong>
+    `;
 
   const categories = getDashboardCategories().filter(category => category.allocated > 0 && category.title.trim());
   const suggestedMatches = getSuggestedCategoryMatches(activeReview);
   const suggestedIds = new Set(suggestedMatches.map(match => match.category.id));
 
   reviewSheetSuggestions.hidden = !suggestedMatches.length;
+  if (reviewSheetSuggestionsCopy) {
+    reviewSheetSuggestionsCopy.textContent = isPreview
+      ? 'Tap a quick category below.'
+      : 'Quick picks based on this merchant.';
+  }
   reviewSheetSuggestionsList.innerHTML = suggestedMatches
     .map(match => `
       <button
@@ -2677,6 +2706,15 @@ function renderReviewSheet() {
       </button>
     `)
     .join('');
+
+  reviewSheetCategoryToggle.hidden = !isPreview;
+  reviewSheetCategoryToggle.setAttribute('aria-expanded', String(!isPreview || reviewSheetCategoriesExpanded));
+  reviewSheetCategoryToggle.textContent = !isPreview
+    ? 'All categories'
+    : reviewSheetCategoriesExpanded
+      ? 'Hide all categories'
+      : 'More categories';
+  reviewSheetCategoryPanel.hidden = isPreview ? !reviewSheetCategoriesExpanded : false;
 
   reviewSheetCategoryList.innerHTML = categories
     .map(category => `
@@ -2707,6 +2745,7 @@ function renderReviewSheet() {
 
 function openReviewSheet(reviewId) {
   reviewState.activeReviewId = reviewId;
+  reviewSheetCategoriesExpanded = true;
   const activeReview = getActiveReviewItem();
   const firstCategoryId = getDashboardCategories().find(category => category.allocated > 0 && category.title.trim())?.id || null;
   const suggestedCategoryId = getSuggestedCategoryMatches(activeReview, 1)[0]?.category?.id || null;
@@ -2716,6 +2755,7 @@ function openReviewSheet(reviewId) {
 }
 
 function openInstantAlertPreviewSheet(preferredCategoryTitle = null) {
+  reviewSheetCategoriesExpanded = false;
   const normalizedPreferredTitle = normalizeReviewText(preferredCategoryTitle || '');
   const suggestedCategory = getDashboardCategories().find(category => normalizeReviewText(category.title) === normalizedPreferredTitle && category.allocated > 0)
     || getDashboardCategories().find(category => category.title === 'Groceries' && category.allocated > 0)
@@ -4972,4 +5012,9 @@ actionConfirmModal?.addEventListener('click', event => {
   if (closeTarget?.dataset.closeModal === 'action-confirm-modal') {
     closeActionConfirmModal();
   }
+});
+
+reviewSheetCategoryToggle?.addEventListener('click', () => {
+  reviewSheetCategoriesExpanded = !reviewSheetCategoriesExpanded;
+  renderReviewSheet();
 });
