@@ -1567,6 +1567,7 @@ def create_app() -> Flask:
             purchase_name = review.get("name") or "Purchase"
             amount_label = format_currency_from_cents(review.get("amountCents"))
             review_id = review.get("reviewId")
+            transaction_id = review.get("transactionId") or review_id or str(int(datetime.utcnow().timestamp()))
             single_target_url = (
                 f"{app_base_url}/?reviewQueue=1&review={review_id}&source=push-review"
                 if app_base_url and review_id
@@ -1580,7 +1581,7 @@ def create_app() -> Flask:
                     else f"{amount_label} at {purchase_name} just came through and is ready to categorize."
                 ),
                 "url": single_target_url,
-                "tag": "largent-review-alert",
+                "tag": f"largent-review-{transaction_id}",
                 "data": {
                     "type": "plaid-review",
                     "reviewId": review_id,
@@ -1588,14 +1589,16 @@ def create_app() -> Flask:
                 },
             }
 
+        review_ids = [review.get("reviewId") for review in new_reviews if review.get("reviewId")]
+        batch_tag = f"largent-review-batch-{int(datetime.utcnow().timestamp())}"
         return {
             "title": "New purchases detected",
             "body": f"{len(new_reviews)} transactions are ready to categorize in {month_label}.",
             "url": target_url,
-            "tag": "largent-review-alert-batch",
+            "tag": batch_tag,
             "data": {
                 "type": "plaid-review-batch",
-                "reviewIds": [review.get("reviewId") for review in new_reviews if review.get("reviewId")],
+                "reviewIds": review_ids,
                 "monthLabel": month_label,
             },
         }

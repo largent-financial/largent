@@ -584,9 +584,12 @@
                 <h3 id="review-queue-title">Bank activity to review</h3>
                 <p>Posted debits waiting for a category.</p>
               </div>
-              <button class="button button-secondary review-refresh-button" type="button" id="review-refresh-button">
-                Refresh activity
-              </button>
+              <div class="review-head-actions">
+                <span class="review-live-pill" id="review-live-pill" hidden>0 waiting</span>
+                <button class="button button-secondary review-refresh-button" type="button" id="review-refresh-button">
+                  Refresh activity
+                </button>
+              </div>
             </div>
 
             <div class="review-summary-row" id="review-summary-row" aria-live="polite"></div>
@@ -921,6 +924,14 @@
         <span>Memo</span>
         <input id="review-sheet-memo" type="text" placeholder="Optional note" autocomplete="off" />
       </label>
+
+      <div class="review-sheet-suggestions" id="review-sheet-suggestions" hidden>
+        <div class="review-sheet-suggestions-head">
+          <strong>Suggested categories</strong>
+          <span>Quick picks based on this merchant.</span>
+        </div>
+        <div class="review-sheet-suggestions-list" id="review-sheet-suggestions-list"></div>
+      </div>
 
       <div class="review-sheet-category-list" id="review-sheet-category-list" role="radiogroup" aria-label="Budget categories"></div>
 

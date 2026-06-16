@@ -2614,6 +2614,36 @@ h3 {
   margin-bottom: 2px;
 }
 
+.review-head-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
+.review-live-pill {
+  min-height: 36px;
+  padding: 8px 12px;
+  border-radius: 999px;
+  border: 1px solid rgba(15, 23, 41, 0.08);
+  background: rgba(247, 251, 247, 0.96);
+  color: var(--muted);
+  font-size: 0.82rem;
+  font-weight: 800;
+  letter-spacing: 0.01em;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  white-space: nowrap;
+}
+
+.review-live-pill[data-state='active'] {
+  border-color: rgba(53, 188, 64, 0.22);
+  background: rgba(98, 222, 106, 0.16);
+  color: var(--primary-deep);
+}
+
 .review-refresh-button {
   min-width: 116px;
   min-height: 40px;
@@ -2888,6 +2918,61 @@ h3 {
 
 .review-sheet-memo-field input {
   min-height: 48px;
+}
+
+.review-sheet-suggestions {
+  display: grid;
+  gap: 10px;
+  margin-top: 14px;
+}
+
+.review-sheet-suggestions-head {
+  display: grid;
+  gap: 2px;
+}
+
+.review-sheet-suggestions-head span {
+  color: var(--muted);
+  font-size: 0.9rem;
+}
+
+.review-sheet-suggestions-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.review-suggestion-chip {
+  min-height: 44px;
+  padding: 10px 12px;
+  border-radius: 16px;
+  border: 1px solid rgba(53, 188, 64, 0.18);
+  background: linear-gradient(180deg, rgba(247, 251, 247, 0.98), rgba(238, 249, 239, 0.94));
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  color: var(--text);
+  text-align: left;
+}
+
+.review-suggestion-chip strong {
+  font-size: 0.92rem;
+}
+
+.review-suggestion-chip span {
+  color: var(--muted);
+  font-size: 0.84rem;
+}
+
+.review-suggestion-chip-active {
+  border-color: rgba(53, 188, 64, 0.34);
+  background: linear-gradient(180deg, rgba(98, 222, 106, 0.22), rgba(98, 222, 106, 0.12));
+  box-shadow: 0 8px 18px rgba(53, 188, 64, 0.08);
+}
+
+.review-suggestion-chip:focus-visible,
+.review-suggestion-chip:hover {
+  border-color: rgba(18, 61, 24, 0.22);
 }
 
 .review-category-option {
@@ -3608,6 +3693,16 @@ h3 {
 
   .review-summary-row {
     grid-template-columns: 1fr;
+  }
+
+  .review-head-actions {
+    width: 100%;
+    justify-content: space-between;
+  }
+
+  .review-live-pill {
+    min-height: 34px;
+    font-size: 0.78rem;
   }
 
   .bank-sync-toggle {

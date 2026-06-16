@@ -101,6 +101,7 @@ const plaidConnectedList = document.getElementById('plaid-connected-list');
 const plaidFeedback = document.getElementById('plaid-feedback');
 const reviewCard = document.getElementById('review-card');
 const reviewRefreshButton = document.getElementById('review-refresh-button');
+const reviewLivePill = document.getElementById('review-live-pill');
 const reviewSummaryRow = document.getElementById('review-summary-row');
 const reviewQueueList = document.getElementById('review-queue-list');
 const reviewFeedback = document.getElementById('review-feedback');
@@ -1806,6 +1807,93 @@ function getDashboardCategories() {
   );
 }
 
+function normalizeReviewText(value) {
+  return String(value || '')
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, ' ')
+    .trim();
+}
+
+function getSuggestedCategoryMatches(reviewItem, limit = 3) {
+  if (!reviewItem) {
+    return [];
+  }
+
+  const categories = getDashboardCategories().filter(category => category.allocated > 0 && category.title.trim());
+  if (!categories.length) {
+    return [];
+  }
+
+  const transaction = reviewItem.transaction || {};
+  const haystack = normalizeReviewText([
+    transaction.merchantName,
+    transaction.name,
+    transaction.institutionName,
+    reviewItem.memo
+  ].filter(Boolean).join(' '));
+
+  const keywordGroups = [
+    { titles: ['Groceries'], keywords: ['whole foods', 'trader joe', 'trader joes', 'kroger', 'publix', 'aldi', 'costco', 'instacart', 'market', 'grocery'] },
+    { titles: ['Gas'], keywords: ['shell', 'chevron', 'exxon', 'bp', 'sunoco', 'marathon', 'speedway', 'fuel', 'gas station', '7 eleven fuel'] },
+    { titles: ['Subscriptions'], keywords: ['netflix', 'spotify', 'apple com bill', 'itunes', 'google', 'youtube', 'hulu', 'disney', 'amazon prime', 'adobe', 'subscription', 'recurring'] },
+    { titles: ['Rent'], keywords: ['rent', 'landlord', 'property management', 'apartments', 'lease'] },
+    { titles: ['Car Payment'], keywords: ['car payment', 'auto loan', 'ford credit', 'toyota financial', 'honda financial', 'ally auto', 'gm financial'] },
+    { titles: ['Car Insurance'], keywords: ['geico', 'progressive', 'allstate', 'state farm', 'insurance premium', 'car insurance'] },
+    { titles: ['Student Loans'], keywords: ['student loan', 'nelnet', 'mohela', 'sallie mae', 'aidvantage', 'loan servicer'] },
+    { titles: ['Investments'], keywords: ['vanguard', 'fidelity', 'schwab', 'etrade', 'betterment', 'robinhood', 'brokerage', 'investment'] },
+    { titles: ['Charitable Donations'], keywords: ['donation', 'charity', 'church', 'tithe', 'fundraiser'] },
+    { titles: ['Fun'], keywords: ['restaurant', 'bar', 'cinema', 'movie', 'ticket', 'entertainment', 'concert', 'doordash', 'uber eats', 'grubhub'] }
+  ];
+
+  const scored = categories.map(category => {
+    const normalizedTitle = normalizeReviewText(category.title);
+    let score = 0;
+
+    keywordGroups.forEach(group => {
+      const titleMatch = group.titles.some(title => normalizeReviewText(title) === normalizedTitle);
+      if (!titleMatch) {
+        return;
+      }
+      group.keywords.forEach(keyword => {
+        if (haystack.includes(keyword)) {
+          score += 3;
+        }
+      });
+    });
+
+    if (!score && haystack) {
+      const titleTokens = normalizedTitle.split(' ').filter(Boolean);
+      titleTokens.forEach(token => {
+        if (token.length >= 4 && haystack.includes(token)) {
+          score += 1;
+        }
+      });
+    }
+
+    return { category, score };
+  })
+    .filter(entry => entry.score > 0)
+    .sort((left, right) => right.score - left.score || right.category.allocated - left.category.allocated)
+    .slice(0, limit);
+
+  if (scored.length) {
+    return scored;
+  }
+
+  if (reviewItem.preview) {
+    const previewSuggested = categories.find(category => normalizeReviewText(category.title) === normalizeReviewText(reviewItem.suggestedCategoryTitle));
+    if (previewSuggested) {
+      return [{ category: previewSuggested, score: 1 }];
+    }
+  }
+
+  return categories
+    .slice()
+    .sort((left, right) => right.allocated - left.allocated)
+    .slice(0, Math.min(limit, categories.length))
+    .map(category => ({ category, score: 0 }));
+}
+
 function findDashboardCategory(categoryId) {
   if (!dashboardState) {
     return null;
@@ -2406,6 +2494,14 @@ function renderReviewQueue() {
   reviewRefreshButton.disabled = reviewState.syncing || reviewState.loading || !currentUser;
   reviewRefreshButton.textContent = reviewState.syncing ? 'Refreshing...' : 'Refresh activity';
 
+  if (reviewLivePill) {
+    reviewLivePill.hidden = false;
+    reviewLivePill.dataset.state = queueCount > 0 ? 'active' : 'idle';
+    reviewLivePill.textContent = queueCount > 0
+      ? `${queueCount} waiting`
+      : 'All caught up';
+  }
+
   reviewSummaryRow.innerHTML = `
     <div class="review-stat">
       <span>Ready to review</span>
@@ -2423,8 +2519,10 @@ function renderReviewQueue() {
     setReviewFeedback(reviewState.success, 'success');
   } else if (reviewState.loading) {
     setReviewFeedback('Loading bank activity review queue…', 'neutral');
+  } else if (queueCount > 0) {
+    setReviewFeedback('Open any new debit and use the suggested categories to sort it faster.', 'neutral');
   } else {
-    setReviewFeedback('Only posted debit transactions for this budget month show up here.', 'neutral');
+    setReviewFeedback('You are caught up. New posted debits will show up here for review.', 'neutral');
   }
 
   if (!reviewState.items.length) {
@@ -2462,7 +2560,9 @@ function renderReviewQueue() {
 }
 
 function renderReviewSheet() {
-  if (!reviewSheetTransaction || !reviewSheetCategoryList || !reviewSheetMemo || !reviewSheetCopy || !reviewSheetFeedback) {
+  const reviewSheetSuggestions = document.getElementById('review-sheet-suggestions');
+  const reviewSheetSuggestionsList = document.getElementById('review-sheet-suggestions-list');
+  if (!reviewSheetTransaction || !reviewSheetCategoryList || !reviewSheetMemo || !reviewSheetCopy || !reviewSheetFeedback || !reviewSheetSuggestions || !reviewSheetSuggestionsList) {
     return;
   }
 
@@ -2470,6 +2570,8 @@ function renderReviewSheet() {
   if (!activeReview) {
     reviewSheetTransaction.innerHTML = '';
     reviewSheetCategoryList.innerHTML = '';
+    reviewSheetSuggestionsList.innerHTML = '';
+    reviewSheetSuggestions.hidden = true;
     reviewSheetMemo.value = '';
     reviewSheetFeedback.textContent = '';
     return;
@@ -2490,6 +2592,23 @@ function renderReviewSheet() {
   `;
 
   const categories = getDashboardCategories().filter(category => category.allocated > 0 && category.title.trim());
+  const suggestedMatches = getSuggestedCategoryMatches(activeReview);
+  const suggestedIds = new Set(suggestedMatches.map(match => match.category.id));
+
+  reviewSheetSuggestions.hidden = !suggestedMatches.length;
+  reviewSheetSuggestionsList.innerHTML = suggestedMatches
+    .map(match => `
+      <button
+        class="review-suggestion-chip${reviewState.selectedCategoryId === match.category.id ? ' review-suggestion-chip-active' : ''}"
+        type="button"
+        data-review-category="${match.category.id}"
+      >
+        <strong>${match.category.title}</strong>
+        <span>${formatCurrencyPrecise(match.category.allocated)}</span>
+      </button>
+    `)
+    .join('');
+
   reviewSheetCategoryList.innerHTML = categories
     .map(category => `
       <button
@@ -2501,7 +2620,7 @@ function renderReviewSheet() {
       >
         <span class="review-category-copy">
           <strong>${category.title}</strong>
-          <span>${formatCurrencyPrecise(category.allocated)}${activeReview.preview && category.title === activeReview.suggestedCategoryTitle ? ' · Recommended' : ''}</span>
+          <span>${formatCurrencyPrecise(category.allocated)}${suggestedIds.has(category.id) ? ' · Suggested' : ''}</span>
         </span>
       </button>
     `)
@@ -2519,8 +2638,10 @@ function renderReviewSheet() {
 
 function openReviewSheet(reviewId) {
   reviewState.activeReviewId = reviewId;
+  const activeReview = getActiveReviewItem();
   const firstCategoryId = getDashboardCategories().find(category => category.allocated > 0 && category.title.trim())?.id || null;
-  reviewState.selectedCategoryId = getActiveReviewItem()?.budgetCategoryId || firstCategoryId;
+  const suggestedCategoryId = getSuggestedCategoryMatches(activeReview, 1)[0]?.category?.id || null;
+  reviewState.selectedCategoryId = activeReview?.budgetCategoryId || suggestedCategoryId || firstCategoryId;
   renderReviewSheet();
   openModal(reviewSheetModal);
 }
@@ -4431,7 +4552,7 @@ reviewQueueList?.addEventListener('click', event => {
     openReviewSheet(openButton.dataset.openReviewSheet);
   }
 });
-reviewSheetCategoryList?.addEventListener('click', event => {
+reviewSheetModal?.addEventListener('click', event => {
   const option = event.target.closest('[data-review-category]');
   if (!option) {
     return;
