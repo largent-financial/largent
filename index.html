@@ -42,49 +42,132 @@
 
   <main id="main" class="app-shell">
     <section class="screen screen-active" data-screen="landing" aria-labelledby="welcome-title">
-      <div class="hero">
-        <div class="hero-panel hero-panel-green">
-          <div class="hero-visual">
-            <div class="hero-brand-block">
-              <img class="hero-logo" src="./largent-translucent2.png" alt="Largent logo" />
-              <div class="hero-brand-copy">
-                <p class="hero-support">A cleaner way to see your money every month.</p>
-              </div>
-            </div>
-          </div>
-        </div>
-
-        <div class="hero-panel hero-panel-white">
-          <article class="welcome-card">
+      <div class="landing-page">
+        <section class="landing-hero" aria-labelledby="welcome-title">
+          <div class="landing-hero-copy">
+            <p class="eyebrow">Monthly money, made clearer</p>
             <h1 id="welcome-title">Budget from your real income.</h1>
-            <p class="lede">Estimate take-home pay, shape your monthly ledger, and track spending without the clutter.</p>
-            <div class="hero-benefits" aria-label="Product benefits">
-              <div class="benefit-chip">
+            <p class="landing-lede">Estimate your true take-home pay, build a clean monthly ledger, and track spending with optional live bank sync when you want less manual work.</p>
+            <div class="landing-actions">
+              <button class="button button-primary" type="button" data-open-auth="signup">Get Started Free</button>
+              <a class="button button-secondary" href="#landing-how-it-works">See How It Works</a>
+            </div>
+            <div class="landing-proof-list" aria-label="Product benefits">
+              <div class="landing-proof-item">
                 <span class="benefit-icon" aria-hidden="true">
                   <img class="benefit-icon-image" src="./dollarbillfavicon.png" alt="" />
                 </span>
-                <span>Track Your True Income</span>
+                <span>Estimate true monthly take-home</span>
               </div>
-              <div class="benefit-chip">
+              <div class="landing-proof-item">
                 <span class="benefit-icon" aria-hidden="true">
                   <img class="benefit-icon-image" src="./tablefavicon.png" alt="" />
                 </span>
-                <span>Balance Your Monthly Ledger Easily</span>
+                <span>Plan every dollar with a clean ledger</span>
               </div>
-              <div class="benefit-chip">
+              <div class="landing-proof-item">
                 <span class="benefit-icon" aria-hidden="true">
                   <img class="benefit-icon-image" src="./piechartfavicon.png" alt="" />
                 </span>
-                <span>Manage Your Spending Process</span>
+                <span>Track spending manually or with bank sync</span>
               </div>
             </div>
-            <div class="actions">
-              <button class="button button-primary" type="button" data-open-auth="signup">Get Started</button>
-              <button class="button button-secondary" type="button" data-open-auth="login">Login</button>
+            <p class="landing-enterprise-note">A product of Sean Pelillo Enterprises.</p>
+          </div>
+          <div class="landing-hero-visual">
+            <div class="landing-hero-glow" aria-hidden="true"></div>
+            <img class="landing-hero-image" src="./phone-white-dashboard.png" alt="Largent dashboard shown on a phone with budget tracking and bank sync review." />
+          </div>
+        </section>
+
+        <section class="landing-value-strip" aria-label="Key value points">
+          <div class="landing-value-item">
+            <strong>Real starting point</strong>
+            <span>Use salary inputs or monthly take-home to budget from the number that actually matters.</span>
+          </div>
+          <div class="landing-value-item">
+            <strong>Cleaner monthly planning</strong>
+            <span>Build a flexible ledger that makes every category visible without overwhelming the screen.</span>
+          </div>
+          <div class="landing-value-item">
+            <strong>Optional live sync</strong>
+            <span>Connect your bank later and review new purchases while they’re still fresh in your mind.</span>
+          </div>
+        </section>
+
+        <section class="landing-showcase" id="landing-how-it-works" aria-labelledby="landing-showcase-title">
+          <div class="landing-showcase-copy">
+            <p class="eyebrow">Set up in minutes</p>
+            <h2 id="landing-showcase-title">A guided setup that keeps things simple.</h2>
+            <p>Choose your income method, add deductions only if you need them, review your estimate, and move straight into your monthly plan.</p>
+          </div>
+          <div class="landing-showcase-image-wrap">
+            <img class="landing-showcase-image" src="./phone-black-onboard.png" alt="Largent onboarding flow shown across multiple phone screens." />
+          </div>
+        </section>
+
+        <section class="landing-features" aria-labelledby="landing-features-title">
+          <div class="landing-features-copy">
+            <p class="eyebrow">Plan and track</p>
+            <h2 id="landing-features-title">A monthly workflow built for real life.</h2>
+            <div class="landing-feature-list">
+              <article class="landing-feature-item">
+                <strong>True monthly starting point</strong>
+                <p>Start from salary, deductions, taxes, or direct take-home so your budget is grounded in reality.</p>
+              </article>
+              <article class="landing-feature-item">
+                <strong>Flexible ledger allocation</strong>
+                <p>Shape your monthly plan category by category and keep every dollar assigned with clarity.</p>
+              </article>
+              <article class="landing-feature-item">
+                <strong>Spending review that stays current</strong>
+                <p>Log spending manually or categorize synced bank activity without losing the bigger picture.</p>
+              </article>
             </div>
-            <p class="microcopy">Join for free today.</p>
-          </article>
-        </div>
+          </div>
+          <div class="landing-feature-card card">
+            <p class="eyebrow">Why Largent works</p>
+            <h3>Clear enough to use weekly. Powerful enough to trust monthly.</h3>
+            <ul class="landing-feature-bullets">
+              <li>Monthly ledger planning</li>
+              <li>Live category tracking</li>
+              <li>Premium Plaid-powered bank sync</li>
+            </ul>
+          </div>
+        </section>
+
+        <section class="landing-premium" aria-labelledby="landing-premium-title">
+          <div class="landing-premium-card">
+            <div>
+              <p class="eyebrow">Optional Premium</p>
+              <h2 id="landing-premium-title">Connect your bank when you want less manual logging.</h2>
+              <p>Premium unlocks Plaid-powered bank sync so Largent can pull in recent activity, alert you quickly, and help you categorize spending faster.</p>
+            </div>
+            <div class="landing-premium-meta">
+              <span class="landing-powered-pill">Powered by Plaid</span>
+              <button class="button button-primary" type="button" data-open-auth="signup">Start Free</button>
+            </div>
+          </div>
+        </section>
+
+        <section class="landing-final-cta" aria-labelledby="landing-final-title">
+          <p class="eyebrow">Start free</p>
+          <h2 id="landing-final-title">Take control of your money with a plan built around real numbers.</h2>
+          <p>Build your first monthly plan for free, then add bank sync only if and when it helps you move faster.</p>
+          <div class="landing-actions landing-actions-center">
+            <button class="button button-primary" type="button" data-open-auth="signup">Get Started Free</button>
+            <button class="button button-secondary" type="button" data-open-auth="login">Log In</button>
+          </div>
+        </section>
+
+        <footer class="landing-footer">
+          <div class="landing-footer-brand">
+            <img class="brand-mark" src="./largent-black.png" alt="Largent app icon" />
+            <span>Largent</span>
+          </div>
+          <p>Budget. Plan. Grow.</p>
+          <small>A product of Sean Pelillo Enterprises.</small>
+        </footer>
       </div>
     </section>
 
