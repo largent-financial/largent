@@ -3365,10 +3365,15 @@ h3 {
     grid-template-columns: 1fr;
   }
 
-  .landing-actions .button {
-    width: 100%;
-    justify-content: center;
-  }
+.landing-actions .button {
+  width: 100%;
+  justify-content: center;
+}
+
+.landing-actions .button-secondary {
+  text-decoration: none;
+  text-align: center;
+}
 
   .landing-hero-glow {
     inset: 18% 0 10%;
