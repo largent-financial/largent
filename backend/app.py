@@ -762,6 +762,24 @@ def create_app() -> Flask:
         subscription.last_notified_at = datetime.utcnow()
         subscription.last_seen_at = datetime.utcnow()
 
+    def build_notification_category_actions(app_base_url: str, *, source: str = "push-alert"):
+        category_choices = [
+            ("groceries", "Groceries"),
+            ("gas", "Gas"),
+            ("fun", "Fun"),
+        ]
+        actions = []
+        action_urls = {}
+        for action_key, category_title in category_choices:
+            action_id = f"category-{action_key}"
+            actions.append({"action": action_id, "title": category_title})
+            action_urls[action_id] = (
+                f"{app_base_url}/?instantPreview=1&previewCategory={urlparse.quote(category_title)}&source={source}"
+                if app_base_url
+                else f"/?instantPreview=1&previewCategory={urlparse.quote(category_title)}&source={source}"
+            )
+        return actions, action_urls
+
     def send_push_to_user(user: User, payload: dict):
         if not push_notifications_configured() or not user.transaction_push_alerts_enabled:
             return {"sent": 0, "deactivated": 0, "errors": []}
@@ -1824,13 +1842,18 @@ def create_app() -> Flask:
         if not push_notifications_configured():
             return jsonify({"message": "Push notifications are not configured yet."}), 503
 
+        app_base_url = (app.config.get("APP_BASE_URL") or "").rstrip("/")
+        actions, action_urls = build_notification_category_actions(app_base_url, source="push-test")
         send_result = send_push_to_user(
             user,
             {
                 "title": "Largent test alert",
-                "body": "Push is set up. When new bank activity is ready, it can show up here.",
-                "url": f"{(app.config.get('APP_BASE_URL') or '').rstrip('/')}/?source=push-test",
+                "body": "Try a category right from this notification on supported devices.",
+                "url": f"{app_base_url}/?instantPreview=1&source=push-test" if app_base_url else "/?instantPreview=1&source=push-test",
                 "tag": "largent-test-alert",
+                "actions": actions,
+                "actionUrls": action_urls,
+                "data": {"type": "push-test-preview"},
             },
         )
         db.session.commit()
@@ -1859,6 +1882,7 @@ def create_app() -> Flask:
             return jsonify({"message": "Instant alert previews are available with Premium bank sync."}), 403
 
         app_base_url = (app.config.get("APP_BASE_URL") or "").rstrip("/")
+        actions, action_urls = build_notification_category_actions(app_base_url, source="push-preview")
         send_result = send_push_to_user(
             user,
             {
@@ -1866,6 +1890,8 @@ def create_app() -> Flask:
                 "body": "$42.18 at Whole Foods just came through and is ready to categorize.",
                 "url": f"{app_base_url}/?instantPreview=1&source=push-preview" if app_base_url else "/?instantPreview=1&source=push-preview",
                 "tag": "largent-instant-preview",
+                "actions": actions,
+                "actionUrls": action_urls,
                 "data": {"type": "instant-alert-preview"},
             },
         )

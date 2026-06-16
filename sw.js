@@ -22,9 +22,12 @@ self.addEventListener('push', event => {
     badge: '/largent-black.png',
     data: {
       url: payload.url || '/',
+      actionUrls: payload.actionUrls || {},
+      ...(payload.data || {}),
     },
     tag: payload.tag || 'largent-alert',
     renotify: false,
+    actions: Array.isArray(payload.actions) ? payload.actions.slice(0, 3) : [],
   };
 
   event.waitUntil(self.registration.showNotification(title, options));
@@ -33,7 +36,8 @@ self.addEventListener('push', event => {
 self.addEventListener('notificationclick', event => {
   event.notification.close();
 
-  const destinationUrl = event.notification.data?.url || '/';
+  const actionUrls = event.notification.data?.actionUrls || {};
+  const destinationUrl = (event.action && actionUrls[event.action]) || event.notification.data?.url || '/';
   event.waitUntil(
     self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then(clientList => {
       for (const client of clientList) {

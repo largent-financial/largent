@@ -867,6 +867,7 @@ function readReviewDeepLinkFromUrl() {
   const params = new URLSearchParams(window.location.search);
   const reviewQueueRequested = params.get('reviewQueue') === '1';
   const reviewId = params.get('review');
+  const previewCategory = params.get('previewCategory');
   instantPreviewDeepLink = params.get('instantPreview') === '1';
 
   if (!reviewQueueRequested && !reviewId && !instantPreviewDeepLink) {
@@ -876,7 +877,8 @@ function readReviewDeepLinkFromUrl() {
   return {
     reviewQueueRequested,
     reviewId: reviewId || null,
-    instantPreview: instantPreviewDeepLink
+    instantPreview: instantPreviewDeepLink,
+    previewCategory: previewCategory || null,
   };
 }
 
@@ -904,6 +906,7 @@ function clearReviewDeepLinkFromUrl() {
   url.searchParams.delete('reviewQueue');
   url.searchParams.delete('review');
   url.searchParams.delete('instantPreview');
+  url.searchParams.delete('previewCategory');
   url.searchParams.delete('source');
   const nextUrl = `${url.pathname}${url.search}${url.hash}`;
   window.history.replaceState({}, document.title, nextUrl);
@@ -920,7 +923,7 @@ function tryOpenReviewDeepLink() {
   }
 
   if (pendingReviewDeepLink.instantPreview) {
-    openInstantAlertPreviewSheet();
+    openInstantAlertPreviewSheet(pendingReviewDeepLink.previewCategory);
     consumeReviewDeepLink();
     return true;
   }
@@ -2712,8 +2715,10 @@ function openReviewSheet(reviewId) {
   openModal(reviewSheetModal);
 }
 
-function openInstantAlertPreviewSheet() {
-  const suggestedCategory = getDashboardCategories().find(category => category.title === 'Groceries' && category.allocated > 0)
+function openInstantAlertPreviewSheet(preferredCategoryTitle = null) {
+  const normalizedPreferredTitle = normalizeReviewText(preferredCategoryTitle || '');
+  const suggestedCategory = getDashboardCategories().find(category => normalizeReviewText(category.title) === normalizedPreferredTitle && category.allocated > 0)
+    || getDashboardCategories().find(category => category.title === 'Groceries' && category.allocated > 0)
     || getDashboardCategories().find(category => category.allocated > 0 && category.title.trim())
     || null;
   reviewState.activeReviewId = 'instant-preview';
