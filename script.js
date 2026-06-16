@@ -416,7 +416,7 @@ async function getExistingPushSubscription() {
 }
 
 function renderPushAlertsUI() {
-  if (!transactionPushToggle || !transactionAlertsDetail || !transactionPushTestButton) {
+  if (!transactionPushToggle || !transactionAlertsDetail) {
     return;
   }
 
@@ -432,9 +432,11 @@ function renderPushAlertsUI() {
 
   transactionPushToggle.checked = enabled;
   transactionPushToggle.disabled = !currentUser || pushState.loading || !supported || !configured;
-  transactionPushTestButton.hidden = !supported || !configured;
-  transactionPushTestButton.disabled = !enabled || pushState.sendingTest;
-  transactionPushTestButton.textContent = pushState.sendingTest ? 'Sending…' : 'Send test alert';
+  if (transactionPushTestButton) {
+    transactionPushTestButton.hidden = !supported || !configured;
+    transactionPushTestButton.disabled = !enabled || pushState.sendingTest;
+    transactionPushTestButton.textContent = pushState.sendingTest ? 'Sending…' : 'Send test alert';
+  }
   if (instantAlertPreviewButton) {
     instantAlertPreviewButton.hidden = !supported || !configured || !premiumWithBankSync || !instantEnabled;
     instantAlertPreviewButton.disabled = !enabled || pushState.sendingPreview;
