@@ -135,6 +135,24 @@ const transactionCategorySelect = document.getElementById('transaction-category'
 const transactionMemoInput = document.getElementById('transaction-memo');
 const transactionFeedback = document.getElementById('transaction-feedback');
 const transactionHistory = document.getElementById('transaction-history');
+const transactionEditModal = document.getElementById('transaction-edit-modal');
+const transactionEditClose = document.getElementById('transaction-edit-close');
+const transactionEditForm = document.getElementById('transaction-edit-form');
+const transactionEditAmount = document.getElementById('transaction-edit-amount');
+const transactionEditDate = document.getElementById('transaction-edit-date');
+const transactionEditCategory = document.getElementById('transaction-edit-category');
+const transactionEditMemo = document.getElementById('transaction-edit-memo');
+const transactionEditFeedback = document.getElementById('transaction-edit-feedback');
+const transactionEditRemove = document.getElementById('transaction-edit-remove');
+const transactionEditCancel = document.getElementById('transaction-edit-cancel');
+const transactionEditSave = document.getElementById('transaction-edit-save');
+const actionConfirmModal = document.getElementById('action-confirm-modal');
+const actionConfirmEyebrow = document.getElementById('action-confirm-eyebrow');
+const actionConfirmTitle = document.getElementById('action-confirm-title');
+const actionConfirmCopy = document.getElementById('action-confirm-copy');
+const actionConfirmFeedback = document.getElementById('action-confirm-feedback');
+const actionConfirmCancel = document.getElementById('action-confirm-cancel');
+const actionConfirmProceed = document.getElementById('action-confirm-proceed');
 
 const breakdownTargets = {
   grossAnnual: document.getElementById('detail-gross-annual'),
@@ -197,6 +215,14 @@ let reviewState = {
   success: '',
   activeReviewId: null,
   selectedCategoryId: null
+};
+let transactionEditState = {
+  transactionId: null,
+  saving: false
+};
+let actionConfirmState = {
+  onConfirm: null,
+  saving: false
 };
 let plaidDisconnectState = {
   accountId: null,
@@ -1922,6 +1948,35 @@ function getDashboardAllocatedTotal() {
   );
 }
 
+function recalculateDashboardCategorySpending() {
+  if (!dashboardState) {
+    return;
+  }
+
+  dashboardState.sections.forEach(section => {
+    section.categories.forEach(category => {
+      category.spent = 0;
+    });
+  });
+
+  dashboardState.transactions.forEach(transaction => {
+    const match = findDashboardCategory(transaction.categoryId);
+    if (match) {
+      match.category.spent = roundToCents(match.category.spent + transaction.amount);
+      transaction.categoryTitle = match.category.title;
+      transaction.sectionTitle = match.section.title;
+    }
+  });
+}
+
+function findDashboardTransaction(transactionId) {
+  if (!dashboardState) {
+    return null;
+  }
+
+  return dashboardState.transactions.find(transaction => transaction.id === transactionId) || null;
+}
+
 function getDashboardSpentTotal() {
   if (!dashboardState) {
     return 0;
@@ -2083,11 +2138,17 @@ function renderTransactionHistory() {
     .reverse()
     .map(transaction => `
       <article class="history-item">
-        <div>
+        <div class="history-item-copy">
           <strong>${transaction.categoryTitle}</strong>
           <span>${formatHistoryDate(transaction.date)}${transaction.memo ? ` · ${transaction.memo}` : ''}</span>
         </div>
-        <strong>${formatCurrencyPrecise(transaction.amount)}</strong>
+        <div class="history-item-side">
+          <strong>${formatCurrencyPrecise(transaction.amount)}</strong>
+          <div class="history-item-actions">
+            <button class="button button-secondary history-item-button" type="button" data-edit-transaction="${transaction.id}">Edit</button>
+            <button class="button button-secondary history-item-button history-item-button-danger" type="button" data-remove-transaction="${transaction.id}">Remove</button>
+          </div>
+        </div>
       </article>
     `)
     .join('');
@@ -2547,9 +2608,14 @@ function renderReviewQueue() {
           </div>
           <div class="review-item-side">
             <strong>${formatCurrencyPrecise(transaction.amount)}</strong>
-            <button class="button button-primary review-item-button" type="button" data-open-review-sheet="${item.id}">
-              Choose category
-            </button>
+            <div class="review-item-actions">
+              <button class="button button-primary review-item-button" type="button" data-open-review-sheet="${item.id}">
+                Choose category
+              </button>
+              <button class="button button-secondary review-item-button review-item-remove-button" type="button" data-remove-review="${item.id}">
+                Remove
+              </button>
+            </div>
           </div>
         </article>
       `;
@@ -2629,7 +2695,7 @@ function renderReviewSheet() {
   reviewSheetMemo.value = activeReview.memo || transaction.merchantName || transaction.name || '';
   reviewSheetFeedback.textContent = '';
   if (reviewSheetDismiss) {
-    reviewSheetDismiss.textContent = activeReview.preview ? 'Dismiss preview' : 'Dismiss';
+    reviewSheetDismiss.textContent = activeReview.preview ? 'Dismiss preview' : (activeReview.transaction?.pending ? 'Remove pending' : 'Remove from review');
   }
   if (reviewSheetSave) {
     reviewSheetSave.textContent = activeReview.preview ? 'Save preview' : 'Save to category';
@@ -3620,6 +3686,196 @@ async function saveLedgerState() {
   return response;
 }
 
+function populateTransactionEditCategoryOptions() {
+  if (!transactionEditCategory) {
+    return;
+  }
+
+  transactionEditCategory.innerHTML = getDashboardCategories()
+    .filter(category => category.allocated > 0 && category.title.trim())
+    .map(category => `<option value="${category.id}">${category.title}</option>`)
+    .join('');
+}
+
+function openTransactionEditModal(transactionId) {
+  const transaction = findDashboardTransaction(transactionId);
+  if (!transaction || !transactionEditModal || !transactionEditAmount || !transactionEditDate || !transactionEditCategory || !transactionEditMemo) {
+    return;
+  }
+
+  transactionEditState.transactionId = transactionId;
+  transactionEditState.saving = false;
+  populateTransactionEditCategoryOptions();
+  transactionEditAmount.value = String(roundToCents(transaction.amount));
+  transactionEditDate.value = transaction.date;
+  transactionEditCategory.value = transaction.categoryId;
+  transactionEditMemo.value = transaction.memo || '';
+  if (transactionEditFeedback) {
+    transactionEditFeedback.textContent = '';
+  }
+  if (transactionEditSave) {
+    transactionEditSave.disabled = false;
+    transactionEditSave.textContent = 'Save changes';
+  }
+  if (transactionEditRemove) {
+    transactionEditRemove.disabled = false;
+  }
+  openModal(transactionEditModal);
+}
+
+function closeTransactionEditModal() {
+  transactionEditState.transactionId = null;
+  if (transactionEditFeedback) {
+    transactionEditFeedback.textContent = '';
+  }
+  closeModal(transactionEditModal);
+}
+
+function openActionConfirm({ eyebrow = 'Confirm', title = 'Are you sure?', copy = 'Please confirm this action.', confirmLabel = 'Confirm', onConfirm }) {
+  if (!actionConfirmModal || !actionConfirmTitle || !actionConfirmCopy || !actionConfirmProceed) {
+    return;
+  }
+
+  actionConfirmState.onConfirm = onConfirm;
+  actionConfirmState.saving = false;
+  actionConfirmEyebrow.textContent = eyebrow;
+  actionConfirmTitle.textContent = title;
+  actionConfirmCopy.textContent = copy;
+  actionConfirmProceed.textContent = confirmLabel;
+  actionConfirmProceed.disabled = false;
+  if (actionConfirmFeedback) {
+    actionConfirmFeedback.textContent = '';
+  }
+  openModal(actionConfirmModal);
+}
+
+function closeActionConfirmModal() {
+  actionConfirmState.onConfirm = null;
+  actionConfirmState.saving = false;
+  if (actionConfirmFeedback) {
+    actionConfirmFeedback.textContent = '';
+  }
+  closeModal(actionConfirmModal);
+}
+
+async function saveTransactionEdit() {
+  const transaction = findDashboardTransaction(transactionEditState.transactionId);
+  if (!transaction || !dashboardState) {
+    return;
+  }
+
+  const amount = roundToCents(parseMoney(transactionEditAmount?.value));
+  const date = transactionEditDate?.value;
+  const categoryId = transactionEditCategory?.value;
+  const memo = transactionEditMemo?.value.trim() || '';
+  const match = findDashboardCategory(categoryId);
+
+  if (!amount || !date || !match) {
+    if (transactionEditFeedback) {
+      transactionEditFeedback.textContent = 'Add an amount, date, and category before saving changes.';
+    }
+    return;
+  }
+
+  transactionEditState.saving = true;
+  if (transactionEditSave) {
+    transactionEditSave.disabled = true;
+    transactionEditSave.textContent = 'Saving...';
+  }
+  if (transactionEditRemove) {
+    transactionEditRemove.disabled = true;
+  }
+
+  const previousTransaction = { ...transaction };
+  transaction.amount = amount;
+  transaction.date = date;
+  transaction.categoryId = categoryId;
+  transaction.categoryTitle = match.category.title;
+  transaction.sectionTitle = match.section.title;
+  transaction.memo = memo;
+  recalculateDashboardCategorySpending();
+  renderDashboard();
+
+  try {
+    await persistDashboardSilently();
+    if (transactionFeedback) {
+      transactionFeedback.textContent = 'Transaction updated.';
+    }
+    closeTransactionEditModal();
+  } catch (error) {
+    Object.assign(transaction, previousTransaction);
+    recalculateDashboardCategorySpending();
+    renderDashboard();
+    if (transactionEditFeedback) {
+      transactionEditFeedback.textContent = error.message || 'We could not save those transaction changes.';
+    }
+  } finally {
+    transactionEditState.saving = false;
+    if (transactionEditSave) {
+      transactionEditSave.disabled = false;
+      transactionEditSave.textContent = 'Save changes';
+    }
+    if (transactionEditRemove) {
+      transactionEditRemove.disabled = false;
+    }
+  }
+}
+
+function requestTransactionRemoval(transactionId) {
+  const transaction = findDashboardTransaction(transactionId);
+  if (!transaction) {
+    return;
+  }
+
+  openActionConfirm({
+    eyebrow: 'Remove spending',
+    title: 'Remove this logged transaction?',
+    copy: `${formatCurrencyPrecise(transaction.amount)} in ${transaction.categoryTitle} will be removed from this month.`,
+    confirmLabel: 'Remove',
+    onConfirm: async () => {
+      const previousTransactions = dashboardState.transactions.map(item => ({ ...item }));
+      dashboardState.transactions = dashboardState.transactions.filter(item => item.id !== transactionId);
+      recalculateDashboardCategorySpending();
+      renderDashboard();
+      closeTransactionEditModal();
+      try {
+        await persistDashboardSilently();
+        return 'Transaction removed.';
+      } catch (error) {
+        dashboardState.transactions = previousTransactions;
+        recalculateDashboardCategorySpending();
+        renderDashboard();
+        throw error;
+      }
+    }
+  });
+}
+
+function requestReviewRemoval(reviewId) {
+  const review = reviewState.items.find(item => item.id === reviewId) || getActiveReviewItem();
+  const transaction = review?.transaction;
+  if (!review || !transaction || review.preview) {
+    return;
+  }
+
+  openActionConfirm({
+    eyebrow: transaction.pending ? 'Remove pending review' : 'Remove bank review',
+    title: transaction.pending ? 'Remove this pending purchase from review?' : 'Remove this bank purchase from review?',
+    copy: `${formatCurrencyPrecise(transaction.amount)} from ${transaction.merchantName || transaction.name} will be removed from your review queue.`,
+    confirmLabel: 'Remove',
+    onConfirm: async () => {
+      const payload = await apiRequest(`/api/plaid/reviews/${review.id}/dismiss`, { method: 'POST' });
+      reviewState.items = payload.reviewQueue?.items || [];
+      reviewState.summary = payload.reviewQueue?.summary || { queueCount: reviewState.items.length, monthLabel: dashboardState?.monthLabel || null };
+      reviewState.success = payload.message || 'Bank transaction removed from review.';
+      reviewState.error = '';
+      closeReviewSheet();
+      renderReviewQueue();
+      return payload.message || 'Bank transaction removed from review.';
+    }
+  });
+}
+
 async function persistDashboardSilently() {
   if (!currentUser || !dashboardState) {
     return;
@@ -3633,6 +3889,7 @@ async function persistDashboardSilently() {
     if (transactionFeedback) {
       transactionFeedback.textContent = error.message || 'We could not save that spending entry yet.';
     }
+    throw error;
   }
 }
 
@@ -4547,9 +4804,27 @@ addSpendingToggle?.addEventListener('click', () => {
   setAddSpendingExpanded(!addSpendingExpanded);
 });
 reviewQueueList?.addEventListener('click', event => {
+  const removeButton = event.target.closest('[data-remove-review]');
+  if (removeButton?.dataset.removeReview) {
+    requestReviewRemoval(removeButton.dataset.removeReview);
+    return;
+  }
+
   const openButton = event.target.closest('[data-open-review-sheet]');
-  if (openButton) {
+  if (openButton?.dataset.openReviewSheet) {
     openReviewSheet(openButton.dataset.openReviewSheet);
+  }
+});
+transactionHistory?.addEventListener('click', event => {
+  const editButton = event.target.closest('[data-edit-transaction]');
+  if (editButton?.dataset.editTransaction) {
+    openTransactionEditModal(editButton.dataset.editTransaction);
+    return;
+  }
+
+  const removeButton = event.target.closest('[data-remove-transaction]');
+  if (removeButton?.dataset.removeTransaction) {
+    requestTransactionRemoval(removeButton.dataset.removeTransaction);
   }
 });
 reviewSheetModal?.addEventListener('click', event => {
@@ -4646,3 +4921,50 @@ deductionKinds.forEach(deduction => setDeductionMode(deduction, 'yearly'));
 updateMethodUI();
 updateFlowStep();
 updateSummary();
+
+transactionEditClose?.addEventListener('click', closeTransactionEditModal);
+transactionEditCancel?.addEventListener('click', closeTransactionEditModal);
+transactionEditSave?.addEventListener('click', saveTransactionEdit);
+transactionEditRemove?.addEventListener('click', () => {
+  if (transactionEditState.transactionId) {
+    requestTransactionRemoval(transactionEditState.transactionId);
+  }
+});
+transactionEditModal?.addEventListener('click', event => {
+  const closeTarget = event.target.closest('[data-close-modal]');
+  if (closeTarget?.dataset.closeModal === 'transaction-edit-modal') {
+    closeTransactionEditModal();
+  }
+});
+actionConfirmCancel?.addEventListener('click', closeActionConfirmModal);
+actionConfirmProceed?.addEventListener('click', async () => {
+  if (!actionConfirmState.onConfirm || actionConfirmState.saving) {
+    return;
+  }
+
+  actionConfirmState.saving = true;
+  actionConfirmProceed.disabled = true;
+  actionConfirmProceed.textContent = 'Working...';
+  try {
+    const message = await actionConfirmState.onConfirm();
+    closeActionConfirmModal();
+    if (message) {
+      if (transactionFeedback) {
+        transactionFeedback.textContent = message;
+      }
+    }
+  } catch (error) {
+    if (actionConfirmFeedback) {
+      actionConfirmFeedback.textContent = error.message || 'We could not complete that action.';
+    }
+    actionConfirmProceed.disabled = false;
+    actionConfirmProceed.textContent = 'Confirm';
+    actionConfirmState.saving = false;
+  }
+});
+actionConfirmModal?.addEventListener('click', event => {
+  const closeTarget = event.target.closest('[data-close-modal]');
+  if (closeTarget?.dataset.closeModal === 'action-confirm-modal') {
+    closeActionConfirmModal();
+  }
+});

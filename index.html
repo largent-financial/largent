@@ -908,6 +908,63 @@
     </div>
   </div>
 
+  <div class="modal-shell modal-shell-bottom-sheet" id="transaction-edit-modal" hidden>
+    <div class="modal-backdrop" data-close-modal="transaction-edit-modal"></div>
+    <div class="modal-card bottom-sheet-card card" role="dialog" aria-modal="true" aria-labelledby="transaction-edit-title">
+      <button class="modal-close" type="button" id="transaction-edit-close" aria-label="Close transaction editor">×</button>
+      <div class="bottom-sheet-head">
+        <p class="eyebrow">Transaction</p>
+        <h3 id="transaction-edit-title">Edit spending</h3>
+        <p class="bottom-sheet-copy" id="transaction-edit-copy">Update or remove a logged spending entry.</p>
+      </div>
+
+      <form class="transaction-form transaction-form-compact" id="transaction-edit-form">
+        <div class="entry-grid entry-grid-compact">
+          <label class="field entry-field entry-field-amount">
+            <span>Amount</span>
+            <input id="transaction-edit-amount" type="text" inputmode="decimal" placeholder="0.00" autocomplete="off" />
+          </label>
+          <label class="field entry-field">
+            <span>Date</span>
+            <input id="transaction-edit-date" type="date" />
+          </label>
+          <label class="field entry-field entry-field-full">
+            <span>Category</span>
+            <select id="transaction-edit-category"></select>
+          </label>
+          <label class="field entry-field entry-field-full">
+            <span>Memo</span>
+            <input id="transaction-edit-memo" type="text" placeholder="Optional note" autocomplete="off" />
+          </label>
+        </div>
+      </form>
+
+      <p class="form-feedback review-sheet-feedback" id="transaction-edit-feedback" role="status" aria-live="polite"></p>
+
+      <div class="modal-actions review-sheet-actions">
+        <button class="button button-secondary" type="button" id="transaction-edit-remove">Remove</button>
+        <button class="button button-secondary" type="button" id="transaction-edit-cancel">Cancel</button>
+        <button class="button button-primary" type="button" id="transaction-edit-save">Save changes</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="modal-shell" id="action-confirm-modal" hidden>
+    <div class="modal-backdrop" data-close-modal="action-confirm-modal"></div>
+    <div class="modal-card card action-confirm-card" role="dialog" aria-modal="true" aria-labelledby="action-confirm-title">
+      <div class="modal-copy">
+        <p class="eyebrow" id="action-confirm-eyebrow">Confirm</p>
+        <h3 id="action-confirm-title">Are you sure?</h3>
+        <p id="action-confirm-copy">This action can’t be undone.</p>
+      </div>
+      <p class="form-feedback" id="action-confirm-feedback" role="status" aria-live="polite"></p>
+      <div class="modal-actions">
+        <button class="button button-secondary" type="button" id="action-confirm-cancel">Cancel</button>
+        <button class="button button-primary" type="button" id="action-confirm-proceed">Confirm</button>
+      </div>
+    </div>
+  </div>
+
   <div class="modal-shell modal-shell-bottom-sheet" id="review-sheet-modal" hidden>
     <div class="modal-backdrop" data-close-modal="review-sheet-modal"></div>
     <div class="modal-card bottom-sheet-card card" role="dialog" aria-modal="true" aria-labelledby="review-sheet-title">
