@@ -4,7 +4,7 @@ import base64
 import csv
 import click
 from cryptography.fernet import Fernet
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from email.message import EmailMessage
 import hashlib
 import hmac
@@ -47,6 +47,18 @@ PLAID_SYNC_TRIGGER_WEBHOOK_CODES = {
     "HISTORICAL_UPDATE",
     "TRANSACTIONS_REMOVED",
 }
+
+
+def utc_now() -> datetime:
+    return datetime.now(timezone.utc)
+
+
+def ensure_utc(value: datetime | None) -> datetime | None:
+    if value is None:
+        return None
+    if value.tzinfo is None:
+        return value.replace(tzinfo=timezone.utc)
+    return value.astimezone(timezone.utc)
 
 
 def create_app() -> Flask:
@@ -1149,9 +1161,11 @@ def create_app() -> Flask:
     def admin_grant_is_active(entitlement: UserEntitlement | None, now: datetime | None = None) -> bool:
         if not entitlement or not entitlement.admin_granted:
             return False
-        if entitlement.admin_granted_until is None:
+        granted_until = ensure_utc(entitlement.admin_granted_until)
+        if granted_until is None:
             return True
-        return entitlement.admin_granted_until > (now or datetime.utcnow())
+        comparison_now = ensure_utc(now) or utc_now()
+        return granted_until > comparison_now
 
     def normalize_promo_code(raw_code: str | None) -> str:
         return "-".join((raw_code or "").strip().upper().split())
@@ -1168,12 +1182,14 @@ def create_app() -> Flask:
             redemption.status = "expired"
 
     def refresh_user_premium_access(user: User):
-        now = datetime.utcnow()
+        now = utc_now()
         subscription = get_active_subscription(user)
         active_promo = get_active_promo_redemption(user)
         entitlement = get_user_entitlement(user, create_if_missing=True)
+        active_promo_granted_until = ensure_utc(active_promo.granted_until) if active_promo else None
+        admin_granted_until = ensure_utc(entitlement.admin_granted_until) if entitlement else None
 
-        if active_promo and active_promo.granted_until and active_promo.granted_until <= now:
+        if active_promo and active_promo_granted_until and active_promo_granted_until <= now:
             expire_promo_redemption(active_promo)
             active_promo = None
 
@@ -1194,7 +1210,7 @@ def create_app() -> Flask:
             entitlement.max_linked_accounts = 4
             entitlement.source = "promo_code"
         else:
-            entitlement.admin_granted = False if entitlement.admin_granted_until and entitlement.admin_granted_until <= now else entitlement.admin_granted
+            entitlement.admin_granted = False if admin_granted_until and admin_granted_until <= now else entitlement.admin_granted
             entitlement.premium_access = False
             entitlement.bank_sync_enabled = False
             entitlement.max_linked_accounts = 4
@@ -1217,7 +1233,8 @@ def create_app() -> Flask:
             return None, "That promo code was not recognized."
         if not promo_code.is_active:
             return None, "That promo code is no longer active."
-        if promo_code.expires_at and promo_code.expires_at <= datetime.utcnow():
+        promo_expires_at = ensure_utc(promo_code.expires_at)
+        if promo_expires_at and promo_expires_at <= utc_now():
             return None, "That promo code has expired."
         if promo_code.times_redeemed >= promo_code.max_redemptions:
             return None, "That promo code has already reached its redemption limit."
@@ -1232,7 +1249,7 @@ def create_app() -> Flask:
         if existing_redemption:
             return None, "You have already redeemed this promo code."
 
-        granted_until = datetime.utcnow() + timedelta(days=30)
+        granted_until = utc_now() + timedelta(days=30)
         redemption = PromoCodeRedemption(
             promo_code_id=promo_code.id,
             user_id=user.id,
