@@ -481,7 +481,6 @@
       <div class="dashboard-shell">
         <header class="dashboard-top">
           <div>
-            <p class="eyebrow">Tracking Dashboard</p>
             <h2 id="dashboard-title"><span id="dashboard-month-title">July 2026</span> Dashboard</h2>
           </div>
           <button class="button button-secondary dashboard-chip" type="button" id="dashboard-back">Back to ledger</button>
@@ -506,33 +505,6 @@
         </div>
 
         <section class="dashboard-grid" aria-label="Monthly budget dashboard">
-          <article class="plaid-card card" id="plaid-card" aria-labelledby="plaid-sync-title">
-            <div class="plaid-toggle-row">
-              <button class="plaid-collapse-button" type="button" id="plaid-collapse-button" aria-expanded="false" aria-controls="plaid-card-body">
-                <div class="plaid-brand-mark">
-                  <img src="./plaid transparent.png" alt="Plaid logo" />
-                </div>
-                <div class="plaid-toggle-copy">
-                  <h3 id="plaid-sync-title">Connect to your bank</h3>
-                  <p class="plaid-powered">Powered by Plaid</p>
-                </div>
-                <span class="plaid-collapse-chevron" aria-hidden="true">⌄</span>
-              </button>
-              <button class="bank-sync-toggle" type="button" id="plaid-connect-button" role="switch" aria-checked="false" aria-label="Toggle bank sync">
-                <span class="bank-sync-toggle-track" aria-hidden="true">
-                  <span class="bank-sync-toggle-state bank-sync-toggle-state-on">On</span>
-                  <span class="bank-sync-toggle-state bank-sync-toggle-state-off">Off</span>
-                  <span class="bank-sync-toggle-thumb"></span>
-                </span>
-              </button>
-            </div>
-            <div class="plaid-card-body" id="plaid-card-body" hidden>
-              <div class="plaid-summary-row" id="plaid-summary-row" aria-live="polite"></div>
-              <p class="form-feedback plaid-feedback" id="plaid-feedback" role="status" aria-live="polite"></p>
-              <div class="plaid-connected-list" id="plaid-connected-list"></div>
-            </div>
-          </article>
-
           <article class="transaction-card card" aria-labelledby="transaction-entry-title">
             <button class="add-spending-pill" type="button" id="add-spending-toggle" aria-expanded="false" aria-controls="add-spending-panel">
               <span>+ Add spending</span>
@@ -578,11 +550,38 @@
             </div>
           </article>
 
+          <article class="plaid-card card" id="plaid-card" aria-labelledby="plaid-sync-title">
+            <div class="plaid-toggle-row">
+              <button class="plaid-collapse-button" type="button" id="plaid-collapse-button" aria-expanded="false" aria-controls="plaid-card-body">
+                <div class="plaid-brand-mark">
+                  <img src="./plaid transparent.png" alt="Plaid logo" />
+                </div>
+                <div class="plaid-toggle-copy">
+                  <h3 id="plaid-sync-title">Bank sync</h3>
+                  <p class="plaid-powered">Powered by Plaid</p>
+                </div>
+                <span class="plaid-collapse-chevron" aria-hidden="true">⌄</span>
+              </button>
+              <button class="bank-sync-toggle" type="button" id="plaid-connect-button" role="switch" aria-checked="false" aria-label="Toggle bank sync">
+                <span class="bank-sync-toggle-track" aria-hidden="true">
+                  <span class="bank-sync-toggle-state bank-sync-toggle-state-on">On</span>
+                  <span class="bank-sync-toggle-state bank-sync-toggle-state-off">Off</span>
+                  <span class="bank-sync-toggle-thumb"></span>
+                </span>
+              </button>
+            </div>
+            <div class="plaid-card-body" id="plaid-card-body" hidden>
+              <div class="plaid-summary-row" id="plaid-summary-row" aria-live="polite"></div>
+              <p class="form-feedback plaid-feedback" id="plaid-feedback" role="status" aria-live="polite"></p>
+              <div class="plaid-connected-list" id="plaid-connected-list"></div>
+            </div>
+          </article>
+
           <article class="review-card card" id="review-card" aria-labelledby="review-queue-title">
             <div class="section-head review-head review-head-compact">
               <div>
                 <h3 id="review-queue-title">Bank activity to review</h3>
-                <p>Posted debits without a saved category.</p>
+                <p>Unassigned bank transactions.</p>
               </div>
               <div class="review-head-actions">
                 <span class="review-live-pill" id="review-live-pill" hidden>0 waiting</span>
@@ -601,7 +600,7 @@
             <div class="section-head">
               <div>
                 <h3 id="tracking-groups-title">Category tracking</h3>
-                <p>Remaining budget by category.</p>
+                <p>Spent and remaining by category.</p>
               </div>
             </div>
 
@@ -794,10 +793,8 @@
         <div class="profile-panel-wrap">
           <section class="profile-panel profile-panel-active" data-profile-panel="account" aria-labelledby="profile-modal-title">
             <div class="profile-panel-head">
-              <p class="eyebrow">Profile</p>
               <h3 id="profile-modal-title">Account</h3>
-              <p class="profile-panel-subtitle">Your identity and login details.</p>
-              <p>Update your name, email, and email preferences, or request a password reset code.</p>
+              <p>Name, email, notifications, and password reset.</p>
             </div>
 
             <form class="profile-form" id="profile-account-form">
@@ -815,18 +812,19 @@
                   <input type="email" name="email" autocomplete="email" />
                 </label>
               </div>
+              <div class="profile-section-label">Notifications</div>
               <div class="settings-list">
                 <label class="settings-row">
                   <div>
                     <strong>Monthly summary emails</strong>
-                    <span>Get a monthly recap when that email flow is active.</span>
+                    <span>Monthly recap email.</span>
                   </div>
                   <input type="checkbox" name="monthlySummaryEmailsEnabled" />
                 </label>
                 <label class="settings-row">
                   <div>
                     <strong>Security emails</strong>
-                    <span>Keep non-critical account security notices enabled.</span>
+                    <span>Account security notices.</span>
                   </div>
                   <input type="checkbox" name="securityEmailsEnabled" />
                 </label>
@@ -858,17 +856,15 @@
 
           <section class="profile-panel profile-panel-premium" data-profile-panel="billing" aria-labelledby="profile-billing-title">
             <div class="profile-panel-head">
-              <p class="eyebrow">Premium</p>
               <h3 id="profile-billing-title">Billing</h3>
-              <p class="profile-panel-subtitle">Premium and subscription details.</p>
-              <p>Premium will power bank sync and future advanced automation.</p>
+              <p>Plan status, promo codes, and subscription actions.</p>
             </div>
 
             <div class="premium-summary" id="profile-billing-summary"></div>
             <div class="promo-redeem-card">
               <div class="promo-redeem-copy">
                 <strong>Have a promo code?</strong>
-                <span>Apply a 1-month Premium code without adding a card.</span>
+                <span>Apply a 1-month Premium code.</span>
               </div>
               <div class="promo-redeem-form">
                 <label class="field field-grid-span-2">
@@ -888,10 +884,8 @@
 
           <section class="profile-panel" data-profile-panel="banking" aria-labelledby="profile-banking-title">
             <div class="profile-panel-head">
-              <p class="eyebrow">Connections</p>
               <h3 id="profile-banking-title">Bank Connections</h3>
-              <p class="profile-panel-subtitle">Manage connected accounts.</p>
-              <p>Review what’s linked, then swap or add eligible accounts.</p>
+              <p>Connected accounts and bank sync access.</p>
             </div>
 
             <div class="profile-bank-summary" id="profile-bank-summary"></div>

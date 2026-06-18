@@ -3346,15 +3346,15 @@ function renderProfileBillingPanel() {
 
   profileBillingSummary.innerHTML = `
     <div class="premium-summary-card">
-      <span class="premium-label">Current plan</span>
+      <span class="premium-label">Plan</span>
       <strong>${planLabel}</strong>
       <p>${statusLabel}</p>
     </div>
     <div class="premium-feature-list">
-      <div><strong>Bank sync</strong><span>${entitlement?.bankSyncEnabled ? 'Enabled' : 'Locked on free plan'}</span></div>
+      <div><strong>Bank sync</strong><span>${entitlement?.bankSyncEnabled ? 'Enabled' : 'Unavailable on free plan'}</span></div>
       <div><strong>Connected accounts</strong><span>Up to ${entitlement?.maxLinkedAccounts ?? 4}</span></div>
-      <div><strong>Billing cycle</strong><span>${premiumActive ? 'Monthly renewal' : 'Upgrade to unlock'}</span></div>
-      <div><strong>Next renewal</strong><span>${premiumActive && subscription ? renewalLabel : promoRedemption?.grantedUntil ? formatHistoryDate(promoRedemption.grantedUntil) : '—'}</span></div>
+      <div><strong>Billing cycle</strong><span>${premiumActive ? 'Monthly' : 'Not active'}</span></div>
+      <div><strong>${promoPremiumActive ? 'Promo ends' : 'Next renewal'}</strong><span>${premiumActive && subscription ? renewalLabel : promoRedemption?.grantedUntil ? formatHistoryDate(promoRedemption.grantedUntil) : '—'}</span></div>
     </div>
   `;
 
@@ -3398,7 +3398,7 @@ function renderProfileBankingPanel() {
   profileBankSummary.innerHTML = `
     <div class="profile-bank-summary-row">
       <strong>${activeConnected} of ${maxLinked} connected</strong>
-      <span>${premiumRequired ? 'Premium required to add more bank accounts.' : 'Use Change to swap any connected account.'}</span>
+      <span>${premiumRequired ? 'Premium is required to add bank accounts.' : 'Use Change to replace a connected account.'}</span>
     </div>
   `;
 
