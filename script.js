@@ -2744,18 +2744,19 @@ function renderPlaidSection() {
   const summary = plaidState.summary;
   const accounts = flattenPlaidAccounts(plaidState.items);
   const activeConnected = summary?.activeConnectedAccounts ?? accounts.length;
-  const toggleActive = premiumActive && activeConnected > 0;
+  const hasConnectedAccounts = activeConnected > 0;
+  const toggleActive = hasConnectedAccounts;
 
   plaidConnectButton.disabled = plaidState.loading || plaidState.connecting;
   plaidConnectButton.classList.toggle('bank-sync-toggle-active', toggleActive);
   plaidConnectButton.setAttribute('aria-checked', String(toggleActive));
   plaidConnectButton.setAttribute(
     'aria-label',
-    premiumActive
-      ? activeConnected > 0
-        ? 'Manage connected bank accounts'
-        : 'Connect a bank account'
-      : 'Learn about Premium bank sync'
+    hasConnectedAccounts
+      ? 'Manage connected bank accounts'
+      : premiumActive
+        ? 'Connect a bank account'
+        : 'Learn about Premium bank sync'
   );
 }
 
