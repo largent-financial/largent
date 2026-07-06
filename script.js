@@ -2902,6 +2902,312 @@ async function syncPlaidTransactions() {
   }
 }
 
+function getActiveReviewItem() {
+  if (reviewState.previewItem && reviewState.activeReviewId === reviewState.previewItem.id) {
+    return reviewState.previewItem;
+  }
+
+  return reviewState.items.find(item => item.id === reviewState.activeReviewId) || null;
+}
+
+function getReviewSheetCategories() {
+  return getDashboardCategories()
+    .filter(category => category.allocated > 0 && category.title.trim())
+    .sort((left, right) => right.allocated - left.allocated || left.title.localeCompare(right.title));
+}
+
+function renderReviewQueue() {
+  if (!reviewCard || !reviewQueueList || !reviewSummaryRow || !reviewFeedback) {
+    return;
+  }
+
+  const shouldShow = Boolean(currentUser && dashboardState && isPremiumActive());
+  reviewCard.hidden = !shouldShow;
+
+  if (!shouldShow) {
+    reviewQueueList.innerHTML = '';
+    reviewSummaryRow.innerHTML = '';
+    reviewFeedback.textContent = '';
+    reviewFeedback.dataset.tone = '';
+    if (reviewLivePill) {
+      reviewLivePill.hidden = true;
+      reviewLivePill.textContent = '0 waiting';
+      reviewLivePill.dataset.state = '';
+    }
+    if (reviewRefreshButton) {
+      reviewRefreshButton.disabled = true;
+      reviewRefreshButton.textContent = 'Refresh activity';
+    }
+    return;
+  }
+
+  const queueCount = reviewState.summary?.queueCount ?? reviewState.items.length;
+  const monthLabel = reviewState.summary?.monthLabel || dashboardState?.monthLabel || getCurrentMonthLabel();
+
+  if (reviewLivePill) {
+    reviewLivePill.hidden = queueCount <= 0;
+    reviewLivePill.textContent = `${queueCount} waiting`;
+    reviewLivePill.dataset.state = queueCount > 0 ? 'active' : '';
+  }
+
+  if (reviewRefreshButton) {
+    reviewRefreshButton.disabled = reviewState.syncing || reviewState.loading;
+    reviewRefreshButton.textContent = reviewState.syncing ? 'Refreshing…' : 'Refresh activity';
+  }
+
+  reviewSummaryRow.innerHTML = `
+    <div class="review-stat">
+      <span>Ready to review</span>
+      <strong>${queueCount}</strong>
+    </div>
+    <div class="review-stat">
+      <span>Month</span>
+      <strong>${monthLabel}</strong>
+    </div>
+  `;
+
+  const feedbackMessage = reviewState.error || reviewState.success || '';
+  reviewFeedback.textContent = feedbackMessage;
+  reviewFeedback.dataset.tone = reviewState.error ? 'error' : (reviewState.success ? 'success' : '');
+
+  if (reviewState.loading && !reviewState.hasLoaded) {
+    reviewQueueList.innerHTML = `
+      <div class="review-empty-state">
+        <strong>Loading bank activity…</strong>
+        <span>We’re checking for new transactions now.</span>
+      </div>
+    `;
+    return;
+  }
+
+  if (!reviewState.items.length) {
+    reviewQueueList.innerHTML = `
+      <div class="review-empty-state">
+        <strong>No uncategorized bank debits right now.</strong>
+        <span>Refresh activity after new purchases post to your connected accounts.</span>
+      </div>
+    `;
+    return;
+  }
+
+  reviewQueueList.innerHTML = reviewState.items
+    .map(review => {
+      const transaction = review.transaction || {};
+      const merchantLabel = transaction.merchantName || transaction.name || 'Bank transaction';
+      const pendingBadge = transaction.pending ? '<span class="review-pending-badge">Pending</span>' : '';
+      const accountLine = [
+        formatHistoryDate(transaction.date),
+        transaction.institutionName,
+        transaction.accountMask ? `•••• ${transaction.accountMask}` : null
+      ].filter(Boolean).join(' · ');
+
+      return `
+        <article class="review-item">
+          <div class="review-item-copy">
+            <strong>${merchantLabel}${pendingBadge}</strong>
+            <span>${accountLine || 'Waiting for category'}</span>
+          </div>
+          <div class="review-item-side">
+            <strong>${formatCurrencyPrecise(transaction.amount || 0)}</strong>
+            <div class="review-item-actions">
+              <button class="button button-primary review-item-button" type="button" data-open-review-sheet="${review.id}">Choose category</button>
+              <button class="button button-secondary review-item-button review-item-remove-button" type="button" data-remove-review="${review.id}">Remove</button>
+            </div>
+          </div>
+        </article>
+      `;
+    })
+    .join('');
+}
+
+function renderReviewSheet() {
+  if (!reviewSheetModal || !reviewSheetTransaction || !reviewSheetCategoryList) {
+    return;
+  }
+
+  const review = getActiveReviewItem();
+  if (!review) {
+    closeModal(reviewSheetModal);
+    return;
+  }
+
+  const transaction = review.transaction || {};
+  const merchantLabel = transaction.merchantName || transaction.name || 'Bank transaction';
+  const amount = transaction.amount || 0;
+  const accountParts = [
+    transaction.institutionName || null,
+    transaction.accountName || null,
+    transaction.accountMask ? `•••• ${transaction.accountMask}` : null
+  ].filter(Boolean);
+  const detailLine = accountParts.join(' · ') || 'Connected bank';
+  const statusLabel = transaction.pending ? 'Pending' : 'Posted';
+  const transactionDate = transaction.date ? formatHistoryDate(transaction.date) : 'Recent activity';
+  const categories = getReviewSheetCategories();
+
+  reviewSheetModal.dataset.preview = review.preview ? 'true' : 'false';
+
+  if (reviewSheetCopy) {
+    reviewSheetCopy.textContent = review.preview
+      ? `${formatCurrencyPrecise(amount)} from ${merchantLabel} is a sample instant alert preview.`
+      : `${formatCurrencyPrecise(amount)} from ${merchantLabel} on ${transactionDate}.`;
+  }
+
+  if (reviewSheetMemo) {
+    reviewSheetMemo.value = review.memo || transaction.merchantName || transaction.name || '';
+  }
+
+  reviewSheetTransaction.innerHTML = `
+    <div class="review-sheet-transaction-copy${review.preview ? ' review-sheet-transaction-copy-preview' : ''}">
+      <strong>${merchantLabel}</strong>
+      <span class="review-sheet-transaction-label">${statusLabel}</span>
+      <span>${detailLine}</span>
+    </div>
+    <div class="review-sheet-transaction-amount-wrap">
+      <strong class="review-sheet-transaction-amount">${formatCurrencyPrecise(amount)}</strong>
+    </div>
+  `;
+
+  reviewSheetCategoryList.innerHTML = categories.length
+    ? categories.map(category => {
+        const isSelected = reviewState.selectedCategoryId === category.id;
+        return `
+          <button
+            class="review-category-option${isSelected ? ' review-category-option-active' : ''}"
+            type="button"
+            role="radio"
+            aria-checked="${isSelected}"
+            data-review-category="${category.id}"
+          >
+            <div class="review-category-copy">
+              <strong>${category.title}</strong>
+              <span>${formatCurrencyPrecise(category.allocated)}</span>
+            </div>
+          </button>
+        `;
+      }).join('')
+    : `
+      <div class="review-empty-state">
+        <strong>No budget categories available.</strong>
+        <span>Save your ledger first so new bank transactions have somewhere to go.</span>
+      </div>
+    `;
+
+  if (reviewSheetCategoryToggle) {
+    const hasManyCategories = categories.length > 6;
+    reviewSheetCategoryToggle.hidden = !hasManyCategories;
+    reviewSheetCategoryToggle.setAttribute('aria-expanded', String(reviewSheetCategoriesExpanded));
+    reviewSheetCategoryToggle.textContent = reviewSheetCategoriesExpanded ? 'Hide categories' : 'Show categories';
+  }
+
+  if (reviewSheetCategoryPanel) {
+    reviewSheetCategoryPanel.hidden = !reviewSheetCategoriesExpanded;
+  }
+
+  if (reviewSheetFeedback) {
+    reviewSheetFeedback.textContent = '';
+  }
+
+  if (reviewSheetSave) {
+    reviewSheetSave.textContent = review.preview ? 'Save preview' : 'Save to category';
+    reviewSheetSave.disabled = reviewState.saving || !categories.length;
+  }
+
+  if (reviewSheetDismiss) {
+    reviewSheetDismiss.textContent = review.preview ? 'Dismiss preview' : 'Dismiss';
+    reviewSheetDismiss.disabled = reviewState.saving;
+  }
+
+  if (reviewSheetCancel) {
+    reviewSheetCancel.disabled = reviewState.saving;
+  }
+}
+
+function openReviewSheet(reviewId) {
+  const review = reviewState.items.find(item => item.id === reviewId);
+  if (!review) {
+    return;
+  }
+
+  reviewState.activeReviewId = review.id;
+  const categories = getReviewSheetCategories();
+  reviewState.selectedCategoryId = categories[0]?.id || null;
+  reviewSheetCategoriesExpanded = true;
+
+  const matches = getSuggestedCategoryMatches(review, 1);
+  if (matches[0]?.category?.id) {
+    reviewState.selectedCategoryId = matches[0].category.id;
+  }
+
+  renderReviewSheet();
+  openModal(reviewSheetModal);
+}
+
+function openInstantAlertPreviewSheet(previewCategoryTitle = null) {
+  const categories = getReviewSheetCategories();
+  const defaultCategory = categories.find(category => category.title === previewCategoryTitle) || categories[0] || null;
+
+  reviewState.previewItem = {
+    id: 'instant-preview',
+    preview: true,
+    memo: 'Whole Foods',
+    suggestedCategoryTitle: previewCategoryTitle || defaultCategory?.title || 'Groceries',
+    transaction: {
+      id: 'instant-preview-transaction',
+      merchantName: 'Whole Foods',
+      name: 'Whole Foods',
+      amount: 42.18,
+      date: new Date().toISOString(),
+      pending: true,
+      institutionName: 'Connected bank',
+      accountName: 'Checking',
+      accountMask: '0001'
+    }
+  };
+
+  reviewState.activeReviewId = reviewState.previewItem.id;
+  reviewState.selectedCategoryId = defaultCategory?.id || null;
+  reviewSheetCategoriesExpanded = true;
+  renderReviewSheet();
+  openModal(reviewSheetModal);
+}
+
+function closeReviewSheet() {
+  const activeReview = getActiveReviewItem();
+
+  reviewState.activeReviewId = null;
+  reviewState.selectedCategoryId = null;
+  reviewState.saving = false;
+  reviewSheetCategoriesExpanded = true;
+
+  if (reviewSheetFeedback) {
+    reviewSheetFeedback.textContent = '';
+  }
+
+  if (reviewSheetSave) {
+    reviewSheetSave.disabled = false;
+    reviewSheetSave.textContent = 'Save to category';
+  }
+
+  if (reviewSheetDismiss) {
+    reviewSheetDismiss.disabled = false;
+    reviewSheetDismiss.textContent = 'Dismiss';
+  }
+
+  if (reviewSheetCancel) {
+    reviewSheetCancel.disabled = false;
+  }
+
+  if (reviewSheetMemo) {
+    reviewSheetMemo.value = '';
+  }
+
+  if (activeReview?.preview) {
+    reviewState.previewItem = null;
+  }
+
+  closeModal(reviewSheetModal);
+}
+
 async function approveActiveReview() {
   const activeReview = getActiveReviewItem();
   if (!activeReview || !reviewState.selectedCategoryId) {
