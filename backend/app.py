@@ -3196,6 +3196,25 @@ def create_app() -> Flask:
 
         return jsonify({"message": "Account updated successfully.", "user": serialize_user(user)})
 
+    @app.post("/api/account/delete")
+    def delete_account():
+        user = get_current_user()
+        if not user:
+            return jsonify({"message": "You must be logged in to delete your account."}), 401
+
+        subscription = get_active_subscription(user)
+        if subscription and stripe_subscription_is_active(subscription.status, subscription.cancel_at_period_end):
+            return jsonify(
+                {
+                    "message": "This account still has an active paid Premium subscription. Remove Premium in Billing before deleting the account."
+                }
+            ), 409
+
+        db.session.delete(user)
+        db.session.commit()
+        session.clear()
+        return jsonify({"message": "Account deleted successfully."})
+
     @app.post("/api/auth/logout")
     def logout():
         session.clear()

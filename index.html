@@ -794,7 +794,7 @@
           <section class="profile-panel profile-panel-active" data-profile-panel="account" aria-labelledby="profile-modal-title">
             <div class="profile-panel-head">
               <h3 id="profile-modal-title">Account</h3>
-              <p>Name, email, notifications, and password reset.</p>
+              <p>Name, email, password reset, and account deletion.</p>
             </div>
 
             <form class="profile-form" id="profile-account-form">
@@ -812,39 +812,12 @@
                   <input type="email" name="email" autocomplete="email" />
                 </label>
               </div>
-              <div class="profile-section-label">Notifications</div>
-              <div class="settings-list">
-                <label class="settings-row">
-                  <div>
-                    <strong>Monthly summary emails</strong>
-                    <span>Monthly recap email.</span>
-                  </div>
-                  <input type="checkbox" name="monthlySummaryEmailsEnabled" />
-                </label>
-                <label class="settings-row">
-                  <div>
-                    <strong>Security emails</strong>
-                    <span>Account security notices.</span>
-                  </div>
-                  <input type="checkbox" name="securityEmailsEnabled" />
-                </label>
-                <label class="settings-row">
-                  <div>
-                    <strong>Transaction alerts</strong>
-                    <span id="transaction-alerts-detail">Get a push when new synced spending is ready to categorize on this device.</span>
-                  </div>
-                  <input type="checkbox" name="transactionPushAlertsEnabled" id="transaction-push-toggle" />
-                </label>
-                <label class="settings-row" id="instant-alerts-row" hidden>
-                  <div>
-                    <strong>Instant transaction alerts</strong>
-                    <span id="instant-alerts-detail">Send every bank purchase alert immediately so it’s easier to remember and choose a category.</span>
-                  </div>
-                  <input type="checkbox" name="instantTransactionAlertsEnabled" id="instant-alerts-toggle" />
-                </label>
-              </div>
-              <div class="push-device-actions">
-                <button class="button button-secondary button-compact" type="button" id="instant-alert-preview-button">Preview instant alert</button>
+              <div class="profile-danger-zone">
+                <div class="profile-danger-copy">
+                  <strong>Delete account</strong>
+                  <span>Permanently remove your account, saved budgets, connected bank data, and history.</span>
+                </div>
+                <button class="button button-secondary button-danger" type="button" id="profile-delete-account-button">Delete account</button>
               </div>
               <p class="auth-feedback" id="profile-account-feedback" role="status" aria-live="polite"></p>
               <div class="profile-form-actions">

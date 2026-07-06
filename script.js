@@ -19,6 +19,7 @@ const instantAlertsToggle = document.getElementById('instant-alerts-toggle');
 const instantAlertsDetail = document.getElementById('instant-alerts-detail');
 const transactionPushTestButton = document.getElementById('transaction-push-test-button');
 const instantAlertPreviewButton = document.getElementById('instant-alert-preview-button');
+const profileDeleteAccountButton = document.getElementById('profile-delete-account-button');
 const profileResetPasswordButton = document.getElementById('profile-reset-password-button');
 const profileBillingSummary = document.getElementById('profile-billing-summary');
 const profileBillingFeedback = document.getElementById('profile-billing-feedback');
@@ -3296,31 +3297,9 @@ function renderProfileAccountPanel() {
     return;
   }
 
-  const premiumWithBankSync = Boolean(
-    profileState.premium?.entitlement?.premiumAccess &&
-    profileState.premium?.entitlement?.bankSyncEnabled
-  );
-
   profileAccountForm.elements.firstName.value = currentUser.firstName || '';
   profileAccountForm.elements.lastName.value = currentUser.lastName || '';
   profileAccountForm.elements.email.value = currentUser.email || '';
-  profileAccountForm.elements.monthlySummaryEmailsEnabled.checked = Boolean(currentUser.monthlySummaryEmailsEnabled);
-  profileAccountForm.elements.securityEmailsEnabled.checked = Boolean(currentUser.securityEmailsEnabled);
-  if (profileAccountForm.elements.transactionPushAlertsEnabled) {
-    profileAccountForm.elements.transactionPushAlertsEnabled.checked = Boolean(currentUser.transactionPushAlertsEnabled && pushState.subscription);
-  }
-  if (instantAlertsRow) {
-    instantAlertsRow.hidden = !premiumWithBankSync;
-  }
-  if (instantAlertsToggle) {
-    instantAlertsToggle.checked = currentUser.instantTransactionAlertsEnabled !== false;
-  }
-  if (instantAlertsDetail) {
-    instantAlertsDetail.textContent = premiumWithBankSync
-      ? 'Send every bank purchase alert immediately so it’s easier to remember and choose a category.'
-      : 'Available when Premium bank sync is active.';
-  }
-  renderPushAlertsUI();
 }
 
 function renderProfileBillingPanel() {
@@ -3468,7 +3447,6 @@ async function openProfileModal(nextView = 'account') {
   try {
     await Promise.all([
       loadPremiumStatus(),
-      loadPushStatus({ silent: true }),
     ]);
     renderProfileBillingPanel();
     renderProfileAccountPanel();
@@ -3492,6 +3470,36 @@ function saveCurrentUser(user) {
     window.localStorage.removeItem(CURRENT_USER_STORAGE_KEY);
   }
   updateHeaderAuthState();
+}
+
+function resetAppToSignedOutState() {
+  currentUser = null;
+  dashboardState = null;
+  allocationState = null;
+  reviewState.items = [];
+  reviewState.summary = { queueCount: 0, monthLabel: null };
+  plaidState = {
+    loading: false,
+    connecting: false,
+    entitlement: null,
+    summary: null,
+    items: [],
+    error: '',
+    success: ''
+  };
+  syncPersistedState({
+    incomeProfile: null,
+    monthlyBudget: null,
+    hasCompletedOnboarding: false
+  });
+  saveCurrentUser(null);
+  updateHeaderAuthState();
+  closeHeaderMenu();
+  closeProfileModal();
+  currentStep = 1;
+  previousStep = 1;
+  updateFlowStep();
+  showScreen('landing');
 }
 
 function syncPersistedState({ incomeProfile = null, monthlyBudget = null, hasCompletedOnboarding = false } = {}) {
@@ -3778,7 +3786,7 @@ function closeTransactionEditModal() {
   closeModal(transactionEditModal);
 }
 
-function openActionConfirm({ eyebrow = 'Confirm', title = 'Are you sure?', copy = 'Please confirm this action.', confirmLabel = 'Confirm', onConfirm }) {
+function openActionConfirm({ eyebrow = 'Confirm', title = 'Are you sure?', copy = 'Please confirm this action.', confirmLabel = 'Confirm', destructive = false, onConfirm }) {
   if (!actionConfirmModal || !actionConfirmTitle || !actionConfirmCopy || !actionConfirmProceed) {
     return;
   }
@@ -3789,6 +3797,8 @@ function openActionConfirm({ eyebrow = 'Confirm', title = 'Are you sure?', copy 
   actionConfirmTitle.textContent = title;
   actionConfirmCopy.textContent = copy;
   actionConfirmProceed.textContent = confirmLabel;
+  actionConfirmProceed.dataset.defaultLabel = confirmLabel;
+  actionConfirmProceed.classList.toggle('button-danger', destructive);
   actionConfirmProceed.disabled = false;
   if (actionConfirmFeedback) {
     actionConfirmFeedback.textContent = '';
@@ -3802,6 +3812,7 @@ function closeActionConfirmModal() {
   if (actionConfirmFeedback) {
     actionConfirmFeedback.textContent = '';
   }
+  actionConfirmProceed?.classList.remove('button-danger');
   closeModal(actionConfirmModal);
 }
 
@@ -4052,9 +4063,6 @@ async function handleAccountProfileSave(event) {
   const firstName = profileAccountForm.elements.firstName.value.trim();
   const lastName = profileAccountForm.elements.lastName.value.trim();
   const email = profileAccountForm.elements.email.value.trim().toLowerCase();
-  const monthlySummaryEmailsEnabled = profileAccountForm.elements.monthlySummaryEmailsEnabled.checked;
-  const securityEmailsEnabled = profileAccountForm.elements.securityEmailsEnabled.checked;
-  const instantTransactionAlertsEnabled = profileAccountForm.elements.instantTransactionAlertsEnabled?.checked ?? true;
 
   if (!firstName || !lastName || !email) {
     setProfileFeedback(profileAccountFeedback, 'Please complete your first name, last name, and email.', 'error');
@@ -4064,10 +4072,7 @@ async function handleAccountProfileSave(event) {
   profileState.pendingAccountPayload = {
     firstName,
     lastName,
-    email,
-    monthlySummaryEmailsEnabled,
-    securityEmailsEnabled,
-    instantTransactionAlertsEnabled
+    email
   };
   setProfileFeedback(profileAccountConfirmFeedback, '');
   openModal(profileAccountConfirmModal);
@@ -4133,39 +4138,31 @@ function handleResetPasswordFromProfile() {
   setAuthFeedback(authRecoveryFeedback, 'We’ll email you a recovery code to reset your password.', 'success');
 }
 
+function handleDeleteAccountRequest() {
+  if (!currentUser) {
+    return;
+  }
+
+  openActionConfirm({
+    eyebrow: 'Delete account',
+    title: 'Delete your Largent account?',
+    copy: 'This permanently removes your account, saved budgets, connected bank records, and history. If you still have a paid Premium subscription, remove it in Billing first.',
+    confirmLabel: 'Delete account',
+    destructive: true,
+    onConfirm: async () => {
+      await apiRequest('/api/account/delete', { method: 'POST' });
+      resetAppToSignedOutState();
+      return null;
+    }
+  });
+}
+
 async function handleSignOut() {
   try {
     await apiRequest('/api/auth/logout', { method: 'POST' });
   } catch {
   }
-
-  currentUser = null;
-  dashboardState = null;
-  allocationState = null;
-  reviewState.items = [];
-  reviewState.summary = { queueCount: 0, monthLabel: null };
-  plaidState = {
-    loading: false,
-    connecting: false,
-    entitlement: null,
-    summary: null,
-    items: [],
-    error: '',
-    success: ''
-  };
-  syncPersistedState({
-    incomeProfile: null,
-    monthlyBudget: null,
-    hasCompletedOnboarding: false
-  });
-  saveCurrentUser(null);
-  updateHeaderAuthState();
-  closeHeaderMenu();
-  closeProfileModal();
-  currentStep = 1;
-  previousStep = 1;
-  updateFlowStep();
-  showScreen('landing');
+  resetAppToSignedOutState();
 }
 
 function setAuthFeedback(target, message, type = '') {
@@ -4785,6 +4782,7 @@ profileAccountForm?.addEventListener('submit', handleAccountProfileSave);
 transactionPushToggle?.addEventListener('change', handleTransactionPushToggleChange);
 transactionPushTestButton?.addEventListener('click', sendTransactionPushTest);
 instantAlertPreviewButton?.addEventListener('click', sendInstantAlertPreview);
+profileDeleteAccountButton?.addEventListener('click', handleDeleteAccountRequest);
 profileAccountConfirmCancelButton?.addEventListener('click', () => {
   profileState.pendingAccountPayload = null;
   closeModal(profileAccountConfirmModal);
@@ -5005,7 +5003,7 @@ actionConfirmProceed?.addEventListener('click', async () => {
       actionConfirmFeedback.textContent = error.message || 'We could not complete that action.';
     }
     actionConfirmProceed.disabled = false;
-    actionConfirmProceed.textContent = 'Confirm';
+    actionConfirmProceed.textContent = actionConfirmProceed.dataset.defaultLabel || 'Confirm';
     actionConfirmState.saving = false;
   }
 });
