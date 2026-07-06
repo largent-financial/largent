@@ -77,7 +77,6 @@ const allocationConfirmProceedButton = document.getElementById('allocation-confi
 const ledgerAssistantTrigger = document.getElementById('ledger-assistant-trigger');
 const ledgerAssistantModal = document.getElementById('ledger-assistant-modal');
 const ledgerAssistantClose = document.getElementById('ledger-assistant-close');
-const ledgerAssistantProgressCopy = document.getElementById('ledger-assistant-progress-copy');
 const ledgerAssistantProgressFill = document.getElementById('ledger-assistant-progress-fill');
 const ledgerAssistantQuestions = [...document.querySelectorAll('[data-assistant-step]')];
 const assistantPriorityOptions = document.getElementById('assistant-priority-options');
@@ -105,13 +104,7 @@ const dashboardTotalSpent = document.getElementById('dashboard-total-spent');
 const dashboardLeftToSpend = document.getElementById('dashboard-left-to-spend');
 const dashboardStatusPill = document.getElementById('dashboard-status-pill');
 const dashboardBackButton = document.getElementById('dashboard-back');
-const plaidCard = document.getElementById('plaid-card');
-const plaidCollapseButton = document.getElementById('plaid-collapse-button');
-const plaidCardBody = document.getElementById('plaid-card-body');
 const plaidConnectButton = document.getElementById('plaid-connect-button');
-const plaidSummaryRow = document.getElementById('plaid-summary-row');
-const plaidConnectedList = document.getElementById('plaid-connected-list');
-const plaidFeedback = document.getElementById('plaid-feedback');
 const reviewCard = document.getElementById('review-card');
 const reviewRefreshButton = document.getElementById('review-refresh-button');
 const reviewLivePill = document.getElementById('review-live-pill');
@@ -1622,11 +1615,6 @@ function renderLedgerAssistant() {
     question.hidden = !isActive;
     question.classList.toggle('ledger-assistant-question-active', isActive);
   });
-
-  if (ledgerAssistantProgressCopy) {
-    ledgerAssistantProgressCopy.textContent = `Question ${ledgerAssistantState.currentStep} of 3`;
-  }
-
   if (ledgerAssistantProgressFill) {
     ledgerAssistantProgressFill.style.width = `${(ledgerAssistantState.currentStep / 3) * 100}%`;
   }
@@ -2748,7 +2736,7 @@ function setPlaidFeedback(message = '', tone = 'neutral') {
 }
 
 function renderPlaidSection() {
-  if (!plaidSummaryRow || !plaidConnectedList || !plaidConnectButton || !plaidCard || !plaidCardBody || !plaidCollapseButton) {
+  if (!plaidConnectButton) {
     return;
   }
 
@@ -2756,456 +2744,19 @@ function renderPlaidSection() {
   const summary = plaidState.summary;
   const accounts = flattenPlaidAccounts(plaidState.items);
   const activeConnected = summary?.activeConnectedAccounts ?? accounts.length;
-  const maxLinked = summary?.maxLinkedAccounts ?? 4;
-  const canLinkMore = summary ? Boolean(summary.canLinkMoreAccounts) : true;
   const toggleActive = premiumActive && activeConnected > 0;
 
-  plaidCard.dataset.premiumState = premiumActive ? 'premium' : 'free';
-  plaidCard.classList.toggle('plaid-card-expanded', plaidCardExpanded);
-  plaidCollapseButton.setAttribute('aria-expanded', String(plaidCardExpanded));
-  plaidCardBody.hidden = !plaidCardExpanded;
   plaidConnectButton.disabled = plaidState.loading || plaidState.connecting;
   plaidConnectButton.classList.toggle('bank-sync-toggle-active', toggleActive);
   plaidConnectButton.setAttribute('aria-checked', String(toggleActive));
-
-  if (!premiumActive) {
-    setPlaidFeedback('', 'neutral');
-    plaidSummaryRow.hidden = true;
-    plaidConnectedList.hidden = true;
-    plaidFeedback.hidden = true;
-    plaidConnectButton.setAttribute('aria-label', 'Learn about Premium bank sync');
-    return;
-  }
-
-  plaidSummaryRow.hidden = false;
-  plaidConnectedList.hidden = false;
-  plaidFeedback.hidden = false;
-  plaidConnectButton.setAttribute('aria-label', activeConnected > 0 ? 'Manage connected bank accounts' : 'Connect a bank account');
-
-  const progressPercent = maxLinked ? Math.min(100, Math.max(0, (activeConnected / maxLinked) * 100)) : 0;
-
-  plaidSummaryRow.innerHTML = `
-    <div class="plaid-progress">
-      <div class="plaid-progress-track" aria-hidden="true">
-        <span class="plaid-progress-fill" style="width:${progressPercent}%"></span>
-      </div>
-      <div class="plaid-progress-copy">
-        <span>You can connect up to 4 bank accounts to track spending from.</span>
-        <strong>${activeConnected} of ${maxLinked} connected</strong>
-      </div>
-    </div>
-  `;
-
-  if (plaidState.error) {
-    setPlaidFeedback(plaidState.error, 'error');
-  } else if (plaidState.success) {
-    setPlaidFeedback(plaidState.success, 'success');
-  } else if (plaidState.loading) {
-    setPlaidFeedback('Checking your bank sync status…', 'neutral');
-  } else if (accounts.length) {
-    setPlaidFeedback('Use Change on any connected account if you want to swap it out.', 'neutral');
-  } else {
-    setPlaidFeedback('Toggle on to connect a bank and start pulling in eligible activity for review.', 'neutral');
-  }
-
-  if (!accounts.length) {
-    plaidConnectedList.innerHTML = `
-      <div class="plaid-empty-state">
-        <strong>No bank accounts connected yet.</strong>
-        <span>When you connect one, your linked accounts will show up here.</span>
-      </div>
-    `;
-    renderProfileBankingPanel();
-    return;
-  }
-
-  plaidConnectedList.innerHTML = accounts
-    .map(account => `
-      <article class="plaid-account-tile">
-        <div class="plaid-account-copy">
-          <strong>${account.name || account.officialName || 'Connected account'}</strong>
-          <span>${account.institutionName}${account.mask ? ` •••• ${account.mask}` : ''}</span>
-        </div>
-        <div class="plaid-account-meta">
-          <span>${account.subtype || account.type || 'Account'}</span>
-          <button class="plaid-account-remove" type="button" data-disconnect-plaid-account="${account.id}" aria-label="Disconnect ${account.name || account.officialName || 'connected account'}">
-            Change
-          </button>
-        </div>
-      </article>
-    `)
-    .join('');
-  renderProfileBankingPanel();
-}
-
-function handlePlaidDashboardToggle() {
-  if (!currentUser) {
-    openModal(authModal);
-    return;
-  }
-
-  if (!isPremiumActive()) {
-    openPremiumBankModal();
-    return;
-  }
-
-  startPlaidLinkFlow();
-}
-
-function findPlaidAccountById(accountId) {
-  return flattenPlaidAccounts(plaidState.items).find(account => account.id === accountId) || null;
-}
-
-function openPlaidDisconnectModal(accountId) {
-  const account = findPlaidAccountById(accountId);
-  if (!account) {
-    return;
-  }
-
-  plaidDisconnectState.accountId = account.id;
-  plaidDisconnectState.accountName = account.name || account.officialName || 'this connected account';
-  plaidDisconnectState.saving = false;
-
-  if (plaidDisconnectCopy) {
-    plaidDisconnectCopy.textContent = `We’ll remove ${plaidDisconnectState.accountName} first so you can connect a different account right after.`;
-  }
-  if (plaidDisconnectFeedback) {
-    plaidDisconnectFeedback.textContent = '';
-  }
-  if (plaidDisconnectConfirm) {
-    plaidDisconnectConfirm.disabled = false;
-    plaidDisconnectConfirm.textContent = 'Remove account';
-  }
-  if (plaidDisconnectCancel) {
-    plaidDisconnectCancel.disabled = false;
-  }
-  if (plaidDisconnectClose) {
-    plaidDisconnectClose.disabled = false;
-  }
-
-  openModal(plaidDisconnectModal);
-}
-
-function closePlaidDisconnectModal() {
-  if (plaidDisconnectState.saving) {
-    return;
-  }
-
-  plaidDisconnectState.accountId = null;
-  plaidDisconnectState.accountName = '';
-  if (plaidDisconnectFeedback) {
-    plaidDisconnectFeedback.textContent = '';
-  }
-  closeModal(plaidDisconnectModal);
-}
-
-async function disconnectPlaidAccount() {
-  if (!plaidDisconnectState.accountId || plaidDisconnectState.saving) {
-    return;
-  }
-
-  plaidState.error = '';
-  plaidState.success = '';
-  plaidDisconnectState.saving = true;
-  if (plaidDisconnectFeedback) {
-    plaidDisconnectFeedback.textContent = '';
-  }
-  if (plaidDisconnectConfirm) {
-    plaidDisconnectConfirm.disabled = true;
-    plaidDisconnectConfirm.textContent = 'Removing...';
-  }
-  if (plaidDisconnectCancel) {
-    plaidDisconnectCancel.disabled = true;
-  }
-  if (plaidDisconnectClose) {
-    plaidDisconnectClose.disabled = true;
-  }
-  renderPlaidSection();
-
-  try {
-    const payload = await apiRequest(`/api/plaid/accounts/${plaidDisconnectState.accountId}/disconnect`, { method: 'POST' });
-    plaidState.summary = payload.summary || plaidState.summary;
-    plaidState.items = payload.items || plaidState.items;
-    plaidState.success = payload.message || 'Connected bank account removed. You can add another one now.';
-    closeModal(plaidDisconnectModal);
-    plaidDisconnectState.accountId = null;
-    plaidDisconnectState.accountName = '';
-    renderPlaidSection();
-  } catch (error) {
-    if (plaidDisconnectFeedback) {
-      plaidDisconnectFeedback.textContent = error.message || 'We could not update that connected account.';
-    }
-    renderPlaidSection();
-  } finally {
-    plaidDisconnectState.saving = false;
-    if (plaidDisconnectConfirm) {
-      plaidDisconnectConfirm.disabled = false;
-      plaidDisconnectConfirm.textContent = 'Remove account';
-    }
-    if (plaidDisconnectCancel) {
-      plaidDisconnectCancel.disabled = false;
-    }
-    if (plaidDisconnectClose) {
-      plaidDisconnectClose.disabled = false;
-    }
-  }
-}
-
-function setReviewFeedback(message = '', tone = 'neutral') {
-  if (!reviewFeedback) {
-    return;
-  }
-
-  reviewFeedback.textContent = message;
-  reviewFeedback.dataset.tone = tone;
-}
-
-function getActiveReviewItem() {
-  if (reviewState.activeReviewId === 'instant-preview') {
-    return {
-      id: 'instant-preview',
-      status: 'preview',
-      memo: 'Whole Foods',
-      budgetCategoryId: reviewState.selectedCategoryId,
-      preview: true,
-      suggestedCategoryTitle: 'Groceries',
-      transaction: {
-        id: 'instant-preview-transaction',
-        plaidTransactionId: null,
-        name: 'Whole Foods Market',
-        merchantName: 'Whole Foods',
-        amount: 42.18,
-        date: new Date().toISOString().split('T')[0],
-        pending: true,
-        paymentChannel: 'in store',
-        accountId: null,
-        accountName: 'Checking',
-        accountMask: '4242',
-        accountSubtype: 'checking',
-        institutionName: 'Connected bank',
-      },
-    };
-  }
-  return reviewState.items.find(item => item.id === reviewState.activeReviewId) || null;
-}
-
-function renderReviewQueue() {
-  if (!reviewSummaryRow || !reviewQueueList || !reviewRefreshButton || !reviewCard) {
-    return;
-  }
-
-  const premiumActive = isPremiumActive();
-  reviewCard.hidden = !premiumActive;
-  if (!premiumActive) {
-    return;
-  }
-
-  const queueCount = reviewState.summary?.queueCount ?? reviewState.items.length;
-  reviewRefreshButton.disabled = reviewState.syncing || reviewState.loading || !currentUser;
-  reviewRefreshButton.textContent = reviewState.syncing ? 'Refreshing...' : 'Refresh activity';
-
-  if (reviewLivePill) {
-    reviewLivePill.hidden = false;
-    reviewLivePill.dataset.state = queueCount > 0 ? 'active' : 'idle';
-    reviewLivePill.textContent = queueCount > 0
-      ? `${queueCount} waiting`
-      : 'All caught up';
-  }
-
-  reviewSummaryRow.innerHTML = `
-    <div class="review-stat">
-      <span>Ready to review</span>
-      <strong>${queueCount}</strong>
-    </div>
-    <div class="review-stat">
-      <span>Month</span>
-      <strong>${reviewState.summary?.monthLabel || dashboardState?.monthLabel || 'Current'}</strong>
-    </div>
-  `;
-
-  if (reviewState.error) {
-    setReviewFeedback(reviewState.error, 'error');
-  } else if (reviewState.success) {
-    setReviewFeedback(reviewState.success, 'success');
-  } else if (reviewState.loading) {
-    setReviewFeedback('Loading bank activity review queue…', 'neutral');
-  } else if (queueCount > 0) {
-    setReviewFeedback('Open any new debit and assign it to the category that fits best.', 'neutral');
-  } else {
-    setReviewFeedback('You are caught up. New posted debits will show up here for review.', 'neutral');
-  }
-
-  if (!reviewState.items.length) {
-    reviewQueueList.innerHTML = `
-      <div class="review-empty-state">
-        <strong>No uncategorized bank debits right now.</strong>
-        <span>Refresh activity after new purchases post to your connected accounts.</span>
-      </div>
-    `;
-    tryOpenReviewDeepLink();
-    return;
-  }
-
-  reviewQueueList.innerHTML = reviewState.items
-    .map(item => {
-      const transaction = item.transaction;
-      return `
-        <article class="review-item">
-          <div class="review-item-copy">
-            <strong>${transaction.merchantName || transaction.name}${transaction.pending ? ' <span class="review-pending-badge">Pending</span>' : ''}</strong>
-            <span>${formatHistoryDate(transaction.date)} · ${transaction.institutionName || 'Connected bank'}${transaction.accountMask ? ` •••• ${transaction.accountMask}` : ''}</span>
-          </div>
-          <div class="review-item-side">
-            <strong>${formatCurrencyPrecise(transaction.amount)}</strong>
-            <div class="review-item-actions">
-              <button class="button button-primary review-item-button" type="button" data-open-review-sheet="${item.id}">
-                Choose category
-              </button>
-              <button class="button button-secondary review-item-button review-item-remove-button" type="button" data-remove-review="${item.id}">
-                Remove
-              </button>
-            </div>
-          </div>
-        </article>
-      `;
-    })
-    .join('');
-
-  tryOpenReviewDeepLink();
-}
-
-function renderReviewSheet() {
-  if (!reviewSheetTransaction || !reviewSheetCategoryList || !reviewSheetMemo || !reviewSheetCopy || !reviewSheetFeedback || !reviewSheetCategoryToggle || !reviewSheetCategoryPanel) {
-    return;
-  }
-
-  const activeReview = getActiveReviewItem();
-  if (!activeReview) {
-    reviewSheetTransaction.innerHTML = '';
-    reviewSheetCategoryList.innerHTML = '';
-    reviewSheetCategoryToggle.hidden = true;
-    reviewSheetCategoryPanel.hidden = false;
-    reviewSheetMemo.value = '';
-    reviewSheetFeedback.textContent = '';
-    reviewSheetModal?.removeAttribute('data-preview');
-    reviewSheetCard?.removeAttribute('data-preview');
-    return;
-  }
-
-  const transaction = activeReview.transaction;
-  const isPreview = Boolean(activeReview.preview);
-  reviewSheetModal?.setAttribute('data-preview', isPreview ? 'true' : 'false');
-  reviewSheetCard?.setAttribute('data-preview', isPreview ? 'true' : 'false');
-  reviewSheetCopy.textContent = isPreview
-    ? 'Pick the category you would tap when a new bank purchase alert comes in.'
-    : transaction.pending
-      ? `${formatCurrencyPrecise(transaction.amount)} from ${transaction.merchantName || transaction.name} is still pending, so the amount or merchant may update when it posts.`
-      : `${formatCurrencyPrecise(transaction.amount)} from ${transaction.merchantName || transaction.name} on ${formatHistoryDate(transaction.date)}.`;
-  reviewSheetTransaction.innerHTML = isPreview
-    ? `
-      <div class="review-sheet-transaction-copy review-sheet-transaction-copy-preview">
-        <span class="review-sheet-transaction-label">Instant alert preview</span>
-        <strong>${transaction.merchantName || transaction.name}</strong>
-        <span>${transaction.institutionName || 'Connected bank'}${transaction.accountName ? ` · ${transaction.accountName}` : ''}</span>
-      </div>
-      <div class="review-sheet-transaction-amount-wrap">
-        ${transaction.pending ? '<span class="review-pending-badge">Pending</span>' : ''}
-        <strong class="review-sheet-transaction-amount">${formatCurrencyPrecise(transaction.amount)}</strong>
-      </div>
-    `
-    : `
-      <div class="review-sheet-transaction-copy">
-        <strong>${transaction.merchantName || transaction.name}${transaction.pending ? ' <span class="review-pending-badge">Pending</span>' : ''}</strong>
-        <span>${transaction.institutionName || 'Connected bank'}${transaction.accountName ? ` · ${transaction.accountName}` : ''}</span>
-      </div>
-      <strong class="review-sheet-transaction-amount">${formatCurrencyPrecise(transaction.amount)}</strong>
-    `;
-
-  const categories = getDashboardCategories().filter(category => category.allocated > 0 && category.title.trim());
-
-  reviewSheetCategoryToggle.hidden = !isPreview;
-  reviewSheetCategoryToggle.setAttribute('aria-expanded', String(!isPreview || reviewSheetCategoriesExpanded));
-  reviewSheetCategoryToggle.textContent = !isPreview
-    ? 'All categories'
-    : reviewSheetCategoriesExpanded
-      ? 'Hide all categories'
-      : 'More categories';
-  reviewSheetCategoryPanel.hidden = isPreview ? !reviewSheetCategoriesExpanded : false;
-
-  reviewSheetCategoryList.innerHTML = categories
-    .map(category => `
-      <button
-        class="review-category-option${reviewState.selectedCategoryId === category.id ? ' review-category-option-active' : ''}"
-        type="button"
-        role="radio"
-        aria-checked="${reviewState.selectedCategoryId === category.id ? 'true' : 'false'}"
-        data-review-category="${category.id}"
-      >
-        <span class="review-category-copy">
-          <strong>${category.title}</strong>
-          <span>${formatCurrencyPrecise(category.allocated)}</span>
-        </span>
-      </button>
-    `)
-    .join('');
-
-  reviewSheetMemo.value = activeReview.memo || transaction.merchantName || transaction.name || '';
-  reviewSheetFeedback.textContent = '';
-  if (reviewSheetDismiss) {
-    reviewSheetDismiss.textContent = activeReview.preview ? 'Dismiss preview' : (activeReview.transaction?.pending ? 'Remove pending' : 'Remove from review');
-  }
-  if (reviewSheetSave) {
-    reviewSheetSave.textContent = activeReview.preview ? 'Save preview' : 'Save to category';
-  }
-}
-
-function openReviewSheet(reviewId) {
-  reviewState.activeReviewId = reviewId;
-  reviewSheetCategoriesExpanded = true;
-  const activeReview = getActiveReviewItem();
-  const firstCategoryId = getDashboardCategories().find(category => category.allocated > 0 && category.title.trim())?.id || null;
-  reviewState.selectedCategoryId = activeReview?.budgetCategoryId || firstCategoryId;
-  renderReviewSheet();
-  openModal(reviewSheetModal);
-}
-
-function openInstantAlertPreviewSheet(preferredCategoryTitle = null) {
-  reviewSheetCategoriesExpanded = false;
-  const normalizedPreferredTitle = normalizeReviewText(preferredCategoryTitle || '');
-  const suggestedCategory = getDashboardCategories().find(category => normalizeReviewText(category.title) === normalizedPreferredTitle && category.allocated > 0)
-    || getDashboardCategories().find(category => category.title === 'Groceries' && category.allocated > 0)
-    || getDashboardCategories().find(category => category.allocated > 0 && category.title.trim())
-    || null;
-  reviewState.activeReviewId = 'instant-preview';
-  reviewState.selectedCategoryId = suggestedCategory?.id || null;
-  renderReviewSheet();
-  openModal(reviewSheetModal);
-}
-
-function closeReviewSheet() {
-  reviewState.activeReviewId = null;
-  reviewState.selectedCategoryId = null;
-  if (reviewSheetFeedback) {
-    reviewSheetFeedback.textContent = '';
-  }
-  closeModal(reviewSheetModal);
-}
-
-function setAddSpendingExpanded(expanded) {
-  addSpendingExpanded = expanded;
-  if (!addSpendingToggle || !addSpendingPanel) {
-    return;
-  }
-
-  addSpendingToggle.setAttribute('aria-expanded', String(expanded));
-  addSpendingToggle.classList.toggle('add-spending-pill-active', expanded);
-  addSpendingPanel.hidden = !expanded;
-
-  if (expanded) {
-    window.requestAnimationFrame(() => {
-      transactionAmountInput?.focus();
-    });
-  }
+  plaidConnectButton.setAttribute(
+    'aria-label',
+    premiumActive
+      ? activeConnected > 0
+        ? 'Manage connected bank accounts'
+        : 'Connect a bank account'
+      : 'Learn about Premium bank sync'
+  );
 }
 
 async function loadPlaidStatus({ silent = false } = {}) {
@@ -5278,16 +4829,6 @@ premiumBankModal?.addEventListener('click', event => {
   if (closeTarget) {
     closePremiumBankModal();
   }
-});
-plaidConnectedList?.addEventListener('click', event => {
-  const disconnectButton = event.target.closest('[data-disconnect-plaid-account]');
-  if (disconnectButton) {
-    openPlaidDisconnectModal(disconnectButton.dataset.disconnectPlaidAccount);
-  }
-});
-plaidCollapseButton?.addEventListener('click', () => {
-  plaidCardExpanded = !plaidCardExpanded;
-  renderPlaidSection();
 });
 addSpendingToggle?.addEventListener('click', () => {
   setAddSpendingExpanded(!addSpendingExpanded);
