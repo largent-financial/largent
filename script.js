@@ -79,7 +79,6 @@ const ledgerAssistantModal = document.getElementById('ledger-assistant-modal');
 const ledgerAssistantClose = document.getElementById('ledger-assistant-close');
 const ledgerAssistantProgressCopy = document.getElementById('ledger-assistant-progress-copy');
 const ledgerAssistantProgressFill = document.getElementById('ledger-assistant-progress-fill');
-const ledgerAssistantCopy = document.getElementById('ledger-assistant-copy');
 const ledgerAssistantQuestions = [...document.querySelectorAll('[data-assistant-step]')];
 const assistantPriorityOptions = document.getElementById('assistant-priority-options');
 const assistantExpenseOptions = document.getElementById('assistant-expense-options');
@@ -1591,23 +1590,10 @@ function renderAssistantOptionGroup(container, choices, selectedValue, { multi =
           aria-pressed="${selected ? 'true' : 'false'}"
         >
           <span class="ledger-assistant-option-label">${choice.label}</span>
-          <span class="ledger-assistant-option-hint">${choice.hint || ''}</span>
         </button>
       `;
     })
     .join('');
-}
-
-function getAssistantPromptCopy() {
-  if (ledgerAssistantState.currentStep === 1) {
-    return 'Answer three quick prompts and Largent will build a starter budget you can edit right away.';
-  }
-
-  if (ledgerAssistantState.currentStep === 2) {
-    return 'We’ll keep only the categories that actually fit your month so the ledger starts cleaner.';
-  }
-
-  return 'This last choice tells the assistant where to send the extra room in your plan.';
 }
 
 function validateAssistantStep(step = ledgerAssistantState.currentStep) {
@@ -1645,10 +1631,6 @@ function renderLedgerAssistant() {
     ledgerAssistantProgressFill.style.width = `${(ledgerAssistantState.currentStep / 3) * 100}%`;
   }
 
-  if (ledgerAssistantCopy) {
-    ledgerAssistantCopy.textContent = getAssistantPromptCopy();
-  }
-
   if (ledgerAssistantBack) {
     ledgerAssistantBack.disabled = ledgerAssistantState.currentStep === 1 || ledgerAssistantState.isSubmitting;
   }
@@ -1674,6 +1656,14 @@ function getAssistantExpenseMap() {
 
 function roundAllocation(value) {
   return roundToCents(Math.max(0, value));
+}
+
+function roundDraftAmount(title, value) {
+  if (title === 'Fun') {
+    return roundToCents(Math.max(0, value));
+  }
+
+  return Math.max(0, Math.round(value));
 }
 
 function buildAssistantAllocationState(monthlyIncome) {
@@ -1714,7 +1704,7 @@ function buildAssistantAllocationState(monthlyIncome) {
     if (!choice) {
       return;
     }
-    const amount = roundAllocation(income * (fixedPresets[choice.title] || 0));
+    const amount = roundDraftAmount(choice.title, income * (fixedPresets[choice.title] || 0));
     fixedTotal += amount;
     fixedCategories.push({
       id: `category-${expenseId}`,
@@ -1729,7 +1719,7 @@ function buildAssistantAllocationState(monthlyIncome) {
   if (fixedTotal > income) {
     const scale = income / fixedTotal;
     fixedCategories.forEach(category => {
-      category.amount = roundAllocation(category.amount * scale);
+      category.amount = roundDraftAmount(category.title, category.amount * scale);
     });
     fixedTotal = roundToCents(fixedCategories.reduce((sum, category) => sum + category.amount, 0));
   }
@@ -1768,12 +1758,12 @@ function buildAssistantAllocationState(monthlyIncome) {
       return {
         id: `category-auto-${title.toLowerCase().replace(/[^a-z0-9]+/g, '-')}`,
         title,
-        amount: roundToCents(remaining),
+        amount: roundDraftAmount(title, remaining),
         isEditing: false,
       };
     }
 
-    const amount = roundAllocation((remaining * weights[title]) / weightSum);
+    const amount = roundDraftAmount(title, (remaining * weights[title]) / weightSum);
     remaining = roundToCents(Math.max(0, remaining - amount));
     weightSum -= weights[title];
     return {
@@ -1793,6 +1783,18 @@ function buildAssistantAllocationState(monthlyIncome) {
   }
 
   const assetCategories = generatedCategories.filter(category => assetTitles.includes(category.title));
+
+  const allDraftCategories = [...fixedExpenseCategories, ...variableExpenseCategories, ...assetCategories];
+  const funCategory = allDraftCategories.find(category => category.title === 'Fun');
+  const draftTotal = roundToCents(allDraftCategories.reduce((sum, category) => sum + roundToCents(category.amount || 0), 0));
+  const draftDifference = roundToCents(income - draftTotal);
+
+  if (draftDifference !== 0) {
+    const fallbackCategory = funCategory || allDraftCategories[allDraftCategories.length - 1];
+    if (fallbackCategory) {
+      fallbackCategory.amount = roundToCents(Math.max(0, roundToCents((fallbackCategory.amount || 0) + draftDifference)));
+    }
+  }
 
   let nextCategoryId = 1;
   const normalizeCategory = category => ({
