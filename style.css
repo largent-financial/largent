@@ -2922,6 +2922,13 @@ h3 {
   overflow: hidden;
 }
 
+#review-sheet-modal .bottom-sheet-card {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+  min-height: 0;
+}
+
 .bottom-sheet-head {
   display: grid;
   gap: 6px;
@@ -3042,6 +3049,9 @@ h3 {
 
 .review-sheet-category-panel {
   min-height: 0;
+  display: flex;
+  flex: 1 1 auto;
+  overflow: hidden;
 }
 
 .review-category-option {
@@ -3063,6 +3073,15 @@ h3 {
 .review-sheet-feedback {
   min-height: 20px;
   margin: 10px 0 0;
+}
+
+#review-sheet-modal .review-sheet-category-list {
+  flex: 1 1 auto;
+  max-height: none;
+  min-height: 0;
+  margin-top: 12px;
+  padding-right: 2px;
+  padding-bottom: 12px;
 }
 
 #review-sheet-modal[data-preview='true'] .bottom-sheet-head {
@@ -3126,6 +3145,15 @@ h3 {
 
 .review-sheet-actions {
   margin-top: 8px;
+}
+
+#review-sheet-modal .review-sheet-actions {
+  position: relative;
+  z-index: 2;
+  flex-shrink: 0;
+  margin-top: 12px;
+  padding-top: 12px;
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0), rgba(255, 255, 255, 0.96) 18%, rgba(255, 255, 255, 1));
 }
 
 .transaction-form {
@@ -3914,6 +3942,10 @@ h3 {
     border-radius: 22px 22px 0 0;
   }
 
+  #review-sheet-modal .bottom-sheet-card {
+    max-height: min(92dvh, 860px);
+  }
+
   #review-sheet-modal[data-preview='true'] .review-sheet-transaction {
     padding: 14px;
     gap: 10px;
@@ -3979,6 +4011,11 @@ h3 {
 
   .review-sheet-category-list {
     max-height: min(48dvh, 440px);
+  }
+
+  #review-sheet-modal .review-sheet-category-list {
+    max-height: none;
+    padding-bottom: 16px;
   }
 
   .transaction-card {
