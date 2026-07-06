@@ -2572,6 +2572,17 @@ h3 {
   white-space: nowrap;
 }
 
+.dashboard-plaid-badge-interactive {
+  gap: 12px;
+  padding: 6px 8px 6px 12px;
+}
+
+.dashboard-plaid-badge-copy {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
 .dashboard-plaid-badge img {
   width: 18px;
   height: 18px;
@@ -2601,7 +2612,7 @@ h3 {
 
 .plaid-toggle-row {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
+  grid-template-columns: minmax(0, 1fr);
   align-items: center;
   gap: 14px;
 }
@@ -4190,6 +4201,16 @@ h3 {
     font-size: 0.72rem;
   }
 
+  .dashboard-plaid-badge-interactive {
+    width: 100%;
+    justify-content: space-between;
+    padding: 6px 8px 6px 10px;
+  }
+
+  .dashboard-plaid-badge-copy {
+    min-width: 0;
+  }
+
   .dashboard-plaid-badge img {
     width: 16px;
     height: 16px;
@@ -4319,7 +4340,7 @@ h3 {
 .plaid-toggle-row {
   display: flex;
   align-items: center;
-  justify-content: space-between;
+  justify-content: flex-start;
   gap: 12px;
 }
 

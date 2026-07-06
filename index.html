@@ -486,10 +486,19 @@
         <header class="dashboard-top">
           <div class="dashboard-title-wrap">
             <h2 id="dashboard-title"><span id="dashboard-month-title">July 2026</span> Dashboard</h2>
-            <span class="dashboard-plaid-badge">
-              <img src="./plaid transparent.png" alt="Plaid logo" />
-              <span>Powered by Plaid</span>
-            </span>
+            <div class="dashboard-plaid-badge dashboard-plaid-badge-interactive">
+              <div class="dashboard-plaid-badge-copy">
+                <img src="./plaid transparent.png" alt="Plaid logo" />
+                <span>Powered by Plaid</span>
+              </div>
+              <button class="bank-sync-toggle" type="button" id="plaid-connect-button" role="switch" aria-checked="false" aria-label="Toggle bank sync">
+                <span class="bank-sync-toggle-track" aria-hidden="true">
+                  <span class="bank-sync-toggle-state bank-sync-toggle-state-on">On</span>
+                  <span class="bank-sync-toggle-state bank-sync-toggle-state-off">Off</span>
+                  <span class="bank-sync-toggle-thumb"></span>
+                </span>
+              </button>
+            </div>
           </div>
           <button class="button button-secondary dashboard-chip" type="button" id="dashboard-back">Back to ledger</button>
         </header>
@@ -566,13 +575,6 @@
                   <p class="plaid-powered">Connect and manage linked accounts.</p>
                 </div>
                 <span class="plaid-collapse-chevron" aria-hidden="true">⌄</span>
-              </button>
-              <button class="bank-sync-toggle" type="button" id="plaid-connect-button" role="switch" aria-checked="false" aria-label="Toggle bank sync">
-                <span class="bank-sync-toggle-track" aria-hidden="true">
-                  <span class="bank-sync-toggle-state bank-sync-toggle-state-on">On</span>
-                  <span class="bank-sync-toggle-state bank-sync-toggle-state-off">Off</span>
-                  <span class="bank-sync-toggle-thumb"></span>
-                </span>
               </button>
             </div>
             <div class="plaid-card-body" id="plaid-card-body" hidden>
