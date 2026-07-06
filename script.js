@@ -2637,6 +2637,117 @@ function closePremiumBankModal() {
   closeModal(premiumBankModal);
 }
 
+function openPlaidDisconnectModal(accountId) {
+  if (!plaidDisconnectModal) {
+    return;
+  }
+
+  const account = flattenPlaidAccounts(plaidState.items).find(item => item.id === accountId);
+  if (!account) {
+    return;
+  }
+
+  plaidDisconnectState = {
+    accountId,
+    accountName: account.name || account.officialName || 'connected account',
+    saving: false
+  };
+
+  if (plaidDisconnectCopy) {
+    plaidDisconnectCopy.textContent = `We’ll remove ${plaidDisconnectState.accountName} first so you can connect a different account right after.`;
+  }
+
+  if (plaidDisconnectFeedback) {
+    plaidDisconnectFeedback.textContent = '';
+  }
+
+  if (plaidDisconnectConfirm) {
+    plaidDisconnectConfirm.disabled = false;
+    plaidDisconnectConfirm.textContent = 'Remove account';
+  }
+
+  if (plaidDisconnectCancel) {
+    plaidDisconnectCancel.disabled = false;
+  }
+
+  openModal(plaidDisconnectModal);
+}
+
+function closePlaidDisconnectModal() {
+  plaidDisconnectState = {
+    accountId: null,
+    accountName: '',
+    saving: false
+  };
+
+  if (plaidDisconnectFeedback) {
+    plaidDisconnectFeedback.textContent = '';
+  }
+
+  if (plaidDisconnectConfirm) {
+    plaidDisconnectConfirm.disabled = false;
+    plaidDisconnectConfirm.textContent = 'Remove account';
+  }
+
+  if (plaidDisconnectCancel) {
+    plaidDisconnectCancel.disabled = false;
+  }
+
+  closeModal(plaidDisconnectModal);
+}
+
+async function disconnectPlaidAccount() {
+  if (!currentUser || !plaidDisconnectState.accountId || plaidDisconnectState.saving) {
+    return;
+  }
+
+  plaidDisconnectState.saving = true;
+
+  if (plaidDisconnectConfirm) {
+    plaidDisconnectConfirm.disabled = true;
+    plaidDisconnectConfirm.textContent = 'Removing...';
+  }
+
+  if (plaidDisconnectCancel) {
+    plaidDisconnectCancel.disabled = true;
+  }
+
+  if (plaidDisconnectFeedback) {
+    plaidDisconnectFeedback.textContent = '';
+  }
+
+  try {
+    const payload = await apiRequest(`/api/plaid/accounts/${plaidDisconnectState.accountId}/disconnect`, {
+      method: 'POST'
+    });
+
+    plaidState = {
+      ...plaidState,
+      summary: payload.summary || plaidState.summary,
+      items: payload.items || [],
+      error: '',
+      success: payload.message || 'Connected bank account removed.'
+    };
+
+    renderPlaidSection();
+    renderProfileBankingPanel();
+    closePlaidDisconnectModal();
+  } catch (error) {
+    if (plaidDisconnectFeedback) {
+      plaidDisconnectFeedback.textContent = error.message || 'We could not remove that connected bank account.';
+    }
+    if (plaidDisconnectConfirm) {
+      plaidDisconnectConfirm.disabled = false;
+      plaidDisconnectConfirm.textContent = 'Remove account';
+    }
+    if (plaidDisconnectCancel) {
+      plaidDisconnectCancel.disabled = false;
+    }
+  } finally {
+    plaidDisconnectState.saving = false;
+  }
+}
+
 function handlePlaidDashboardToggle() {
   if (!currentUser) {
     openModal(authModal);
@@ -4723,11 +4834,20 @@ async function handleTransactionSubmit(event) {
 }
 
 function populateStates() {
+  if (!stateSelect) {
+    return;
+  }
+
+  stateSelect.innerHTML = '';
+
+  const placeholder = document.createElement('option');
+  placeholder.value = '';
+  placeholder.textContent = 'Select your state';
+  placeholder.disabled = true;
+  stateSelect.append(placeholder);
+
   stateOptions.forEach(state => {
-    const option = document.createElement('option');
-    option.value = state;
-    option.textContent = state;
-    stateSelect.append(option);
+    stateSelect.append(new Option(state, state));
   });
 }
 
