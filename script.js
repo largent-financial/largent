@@ -274,6 +274,7 @@ let ledgerAssistantState = {
     priority: '',
     expenses: [],
     expenseAmounts: {},
+    expenseModes: {},
     leftover: ''
   },
   hasAutoOpened: false,
@@ -1557,6 +1558,7 @@ function resetLedgerAssistantState({ preserveAutoOpen = false } = {}) {
       priority: '',
       expenses: [],
       expenseAmounts: {},
+      expenseModes: {},
       leftover: ''
     },
     hasAutoOpened: preserveAutoOpen ? ledgerAssistantState.hasAutoOpened : false,
@@ -1598,11 +1600,13 @@ function renderAssistantExpenseOptions() {
 
   const selectedValues = new Set(ledgerAssistantState.answers.expenses || []);
   const expenseAmounts = ledgerAssistantState.answers.expenseAmounts || {};
+  const expenseModes = ledgerAssistantState.answers.expenseModes || {};
 
   assistantExpenseOptions.innerHTML = assistantExpenseChoices
     .map(choice => {
       const selected = selectedValues.has(choice.id);
       const amountValue = expenseAmounts[choice.id] || '';
+      const isUnsure = expenseModes[choice.id] === 'unsure';
 
       return `
         <div
@@ -1617,18 +1621,30 @@ function renderAssistantExpenseOptions() {
             <span class="ledger-assistant-option-label">${choice.label}</span>
           </div>
           ${selected ? `
-            <div class="ledger-assistant-expense-input-wrap">
-              <span aria-hidden="true">$</span>
-              <input
-                class="ledger-assistant-expense-input"
-                type="text"
-                inputmode="decimal"
-                autocomplete="off"
-                placeholder="0"
-                value="${amountValue}"
-                data-assistant-expense-input="${choice.id}"
-                aria-label="${choice.label} monthly amount"
-              />
+            <div class="ledger-assistant-expense-controls">
+              <button
+                class="ledger-assistant-expense-mode${isUnsure ? ' ledger-assistant-expense-mode-active' : ''}"
+                type="button"
+                data-assistant-expense-mode="${choice.id}"
+                aria-pressed="${isUnsure ? 'true' : 'false'}"
+                aria-label="${choice.label} amount unsure"
+              >
+                Unsure
+              </button>
+              <div class="ledger-assistant-expense-input-wrap${isUnsure ? ' ledger-assistant-expense-input-wrap-disabled' : ''}">
+                <span aria-hidden="true">$</span>
+                <input
+                  class="ledger-assistant-expense-input"
+                  type="text"
+                  inputmode="decimal"
+                  autocomplete="off"
+                  placeholder="0"
+                  value="${amountValue}"
+                  data-assistant-expense-input="${choice.id}"
+                  aria-label="${choice.label} monthly amount"
+                  ${isUnsure ? 'disabled' : ''}
+                />
+              </div>
             </div>
           ` : ''}
         </div>
@@ -1639,6 +1655,10 @@ function renderAssistantExpenseOptions() {
 
 function getAssistantExpenseAmount(expenseId) {
   return roundToCents(parseMoney(ledgerAssistantState.answers.expenseAmounts?.[expenseId] || 0));
+}
+
+function isAssistantExpenseUnsure(expenseId) {
+  return ledgerAssistantState.answers.expenseModes?.[expenseId] === 'unsure';
 }
 
 function getAssistantManualExpenseTotal() {
@@ -1763,7 +1783,7 @@ function buildAssistantAllocationState(monthlyIncome) {
     }
 
     const manualAmount = getAssistantExpenseAmount(expenseId);
-    const hasManualAmount = manualAmount > 0;
+    const hasManualAmount = manualAmount > 0 && !isAssistantExpenseUnsure(expenseId);
     const amount = hasManualAmount
       ? roundDraftAmount(choice.title, manualAmount, { manual: true })
       : roundDraftAmount(choice.title, income * (fixedPresets[choice.title] || 0));
@@ -1946,6 +1966,9 @@ function handleLedgerAssistantChoice(choiceId, isMulti) {
     const currentValues = new Set(ledgerAssistantState.answers.expenses);
     if (currentValues.has(choiceId)) {
       currentValues.delete(choiceId);
+      const nextModes = { ...(ledgerAssistantState.answers.expenseModes || {}) };
+      delete nextModes[choiceId];
+      ledgerAssistantState.answers.expenseModes = nextModes;
     } else {
       currentValues.add(choiceId);
     }
@@ -5287,6 +5310,21 @@ ledgerAssistantModal?.addEventListener('click', event => {
     return;
   }
 
+  const modeToggle = event.target.closest('[data-assistant-expense-mode]');
+  if (modeToggle) {
+    const expenseId = modeToggle.dataset.assistantExpenseMode;
+    const nextModes = { ...(ledgerAssistantState.answers.expenseModes || {}) };
+    const isUnsure = nextModes[expenseId] === 'unsure';
+    if (isUnsure) {
+      delete nextModes[expenseId];
+    } else {
+      nextModes[expenseId] = 'unsure';
+    }
+    ledgerAssistantState.answers.expenseModes = nextModes;
+    renderLedgerAssistant();
+    return;
+  }
+
   const option = event.target.closest('[data-assistant-choice]');
   if (!option) {
     return;
@@ -5309,6 +5347,12 @@ assistantExpenseOptions?.addEventListener('input', event => {
     ...ledgerAssistantState.answers.expenseAmounts,
     [input.dataset.assistantExpenseInput]: normalized
   };
+
+  if (normalized) {
+    const nextModes = { ...(ledgerAssistantState.answers.expenseModes || {}) };
+    delete nextModes[input.dataset.assistantExpenseInput];
+    ledgerAssistantState.answers.expenseModes = nextModes;
+  }
 });
 assistantExpenseOptions?.addEventListener('keydown', event => {
   const option = event.target.closest('[data-assistant-choice]');

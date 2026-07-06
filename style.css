@@ -2084,10 +2084,45 @@ h3 {
   gap: 6px;
 }
 
+.ledger-assistant-expense-controls {
+  display: inline-flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.ledger-assistant-expense-mode {
+  min-height: 38px;
+  padding: 0 12px;
+  border-radius: 999px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  background: rgba(255, 255, 255, 0.03);
+  color: rgba(247, 250, 247, 0.78);
+  font-size: 0.85rem;
+  font-weight: 700;
+  letter-spacing: 0.01em;
+}
+
+.ledger-assistant-expense-mode:hover,
+.ledger-assistant-expense-mode:focus-visible {
+  border-color: rgba(98, 222, 106, 0.34);
+  color: #f7faf7;
+}
+
+.ledger-assistant-expense-mode-active {
+  border-color: rgba(98, 222, 106, 0.52);
+  background: rgba(98, 222, 106, 0.14);
+  color: #f7faf7;
+}
+
 .ledger-assistant-expense-input-wrap span {
   color: rgba(247, 250, 247, 0.7);
   font-size: 0.94rem;
   font-weight: 700;
+}
+
+.ledger-assistant-expense-input-wrap-disabled {
+  opacity: 0.56;
 }
 
 .ledger-assistant-expense-input {
@@ -3916,6 +3951,12 @@ h3 {
   .ledger-assistant-expense-option {
     grid-template-columns: minmax(0, 1fr);
     align-items: stretch;
+  }
+
+  .ledger-assistant-expense-controls {
+    width: 100%;
+    flex-wrap: wrap;
+    justify-content: space-between;
   }
 
   .ledger-assistant-expense-input-wrap {
