@@ -2057,6 +2057,56 @@ h3 {
   font-weight: 700;
 }
 
+.ledger-assistant-expense-option {
+  min-height: 78px;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 12px;
+  cursor: pointer;
+}
+
+.ledger-assistant-expense-copy {
+  min-width: 0;
+}
+
+.ledger-assistant-expense-input-wrap {
+  min-width: 112px;
+  max-width: 124px;
+  min-height: 44px;
+  padding: 0 12px;
+  border-radius: 14px;
+  border: 1px solid rgba(98, 222, 106, 0.22);
+  background: rgba(255, 255, 255, 0.08);
+  display: inline-flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 6px;
+}
+
+.ledger-assistant-expense-input-wrap span {
+  color: rgba(247, 250, 247, 0.7);
+  font-size: 0.94rem;
+  font-weight: 700;
+}
+
+.ledger-assistant-expense-input {
+  width: 100%;
+  min-width: 0;
+  border: 0;
+  outline: none;
+  background: transparent;
+  color: #f7faf7;
+  font: inherit;
+  font-size: 0.98rem;
+  font-weight: 700;
+  text-align: right;
+}
+
+.ledger-assistant-expense-input::placeholder {
+  color: rgba(247, 250, 247, 0.38);
+}
+
 .ledger-assistant-feedback {
   min-height: 20px;
   color: #ffb2a1;
@@ -3861,6 +3911,17 @@ h3 {
 
   .ledger-assistant-options-multi {
     grid-template-columns: 1fr;
+  }
+
+  .ledger-assistant-expense-option {
+    grid-template-columns: minmax(0, 1fr);
+    align-items: stretch;
+  }
+
+  .ledger-assistant-expense-input-wrap {
+    max-width: 100%;
+    width: 100%;
+    justify-self: stretch;
   }
 
   .plaid-toggle-copy {

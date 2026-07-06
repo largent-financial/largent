@@ -273,6 +273,7 @@ let ledgerAssistantState = {
   answers: {
     priority: '',
     expenses: [],
+    expenseAmounts: {},
     leftover: ''
   },
   hasAutoOpened: false,
@@ -1555,6 +1556,7 @@ function resetLedgerAssistantState({ preserveAutoOpen = false } = {}) {
     answers: {
       priority: '',
       expenses: [],
+      expenseAmounts: {},
       leftover: ''
     },
     hasAutoOpened: preserveAutoOpen ? ledgerAssistantState.hasAutoOpened : false,
@@ -1589,6 +1591,62 @@ function renderAssistantOptionGroup(container, choices, selectedValue, { multi =
     .join('');
 }
 
+function renderAssistantExpenseOptions() {
+  if (!assistantExpenseOptions) {
+    return;
+  }
+
+  const selectedValues = new Set(ledgerAssistantState.answers.expenses || []);
+  const expenseAmounts = ledgerAssistantState.answers.expenseAmounts || {};
+
+  assistantExpenseOptions.innerHTML = assistantExpenseChoices
+    .map(choice => {
+      const selected = selectedValues.has(choice.id);
+      const amountValue = expenseAmounts[choice.id] || '';
+
+      return `
+        <div
+          class="ledger-assistant-option ledger-assistant-expense-option${selected ? ' ledger-assistant-option-active' : ''}"
+          data-assistant-choice="${choice.id}"
+          data-assistant-multi="true"
+          role="button"
+          tabindex="0"
+          aria-pressed="${selected ? 'true' : 'false'}"
+        >
+          <div class="ledger-assistant-expense-copy">
+            <span class="ledger-assistant-option-label">${choice.label}</span>
+          </div>
+          ${selected ? `
+            <div class="ledger-assistant-expense-input-wrap">
+              <span aria-hidden="true">$</span>
+              <input
+                class="ledger-assistant-expense-input"
+                type="text"
+                inputmode="decimal"
+                autocomplete="off"
+                placeholder="0"
+                value="${amountValue}"
+                data-assistant-expense-input="${choice.id}"
+                aria-label="${choice.label} monthly amount"
+              />
+            </div>
+          ` : ''}
+        </div>
+      `;
+    })
+    .join('');
+}
+
+function getAssistantExpenseAmount(expenseId) {
+  return roundToCents(parseMoney(ledgerAssistantState.answers.expenseAmounts?.[expenseId] || 0));
+}
+
+function getAssistantManualExpenseTotal() {
+  return roundToCents(
+    (ledgerAssistantState.answers.expenses || []).reduce((sum, expenseId) => sum + getAssistantExpenseAmount(expenseId), 0)
+  );
+}
+
 function validateAssistantStep(step = ledgerAssistantState.currentStep) {
   if (step === 1) {
     return Boolean(ledgerAssistantState.answers.priority);
@@ -1607,7 +1665,7 @@ function validateAssistantStep(step = ledgerAssistantState.currentStep) {
 
 function renderLedgerAssistant() {
   renderAssistantOptionGroup(assistantPriorityOptions, assistantPriorityChoices, ledgerAssistantState.answers.priority);
-  renderAssistantOptionGroup(assistantExpenseOptions, assistantExpenseChoices, ledgerAssistantState.answers.expenses, { multi: true });
+  renderAssistantExpenseOptions();
   renderAssistantOptionGroup(assistantLeftoverOptions, assistantLeftoverChoices, ledgerAssistantState.answers.leftover);
 
   ledgerAssistantQuestions.forEach(question => {
@@ -1646,12 +1704,22 @@ function roundAllocation(value) {
   return roundToCents(Math.max(0, value));
 }
 
-function roundDraftAmount(title, value) {
-  if (title === 'Fun') {
+function roundAssistantWholeAmount(value) {
+  const safeValue = Math.max(0, Number(value) || 0);
+  if (safeValue === 0) {
+    return 0;
+  }
+
+  const rounded = Math.round(safeValue / 5) * 5;
+  return rounded === 0 ? 5 : rounded;
+}
+
+function roundDraftAmount(title, value, { manual = false } = {}) {
+  if (manual || title === 'Fun') {
     return roundToCents(Math.max(0, value));
   }
 
-  return Math.max(0, Math.round(value));
+  return roundAssistantWholeAmount(value);
 }
 
 function buildAssistantAllocationState(monthlyIncome) {
@@ -1687,28 +1755,64 @@ function buildAssistantAllocationState(monthlyIncome) {
 
   const fixedCategories = [];
   let fixedTotal = 0;
+  let manualFixedTotal = 0;
   selectedExpenses.forEach(expenseId => {
     const choice = expenseMap[expenseId];
     if (!choice) {
       return;
     }
-    const amount = roundDraftAmount(choice.title, income * (fixedPresets[choice.title] || 0));
+
+    const manualAmount = getAssistantExpenseAmount(expenseId);
+    const hasManualAmount = manualAmount > 0;
+    const amount = hasManualAmount
+      ? roundDraftAmount(choice.title, manualAmount, { manual: true })
+      : roundDraftAmount(choice.title, income * (fixedPresets[choice.title] || 0));
+
     fixedTotal += amount;
+    if (hasManualAmount) {
+      manualFixedTotal += amount;
+    }
     fixedCategories.push({
       id: `category-${expenseId}`,
       title: choice.title,
       amount,
+      isManual: hasManualAmount,
       isEditing: false,
       bucket: choice.bucket,
     });
   });
 
   fixedTotal = roundToCents(fixedTotal);
+  if (manualFixedTotal > income) {
+    throw new Error('Entered monthly expenses are higher than your monthly income. Lower one or more amounts first.');
+  }
+
   if (fixedTotal > income) {
-    const scale = income / fixedTotal;
-    fixedCategories.forEach(category => {
-      category.amount = roundDraftAmount(category.title, category.amount * scale);
-    });
+    const adjustableCategories = fixedCategories.filter(category => !category.isManual);
+    const adjustableTotal = roundToCents(
+      adjustableCategories.reduce((sum, category) => sum + roundToCents(category.amount || 0), 0)
+    );
+    const availableForAdjustable = roundToCents(Math.max(0, income - manualFixedTotal));
+
+    if (adjustableCategories.length && adjustableTotal > 0) {
+      let remainingAdjustable = availableForAdjustable;
+      let adjustableWeight = adjustableTotal;
+
+      adjustableCategories.forEach((category, index) => {
+        const originalAmount = roundToCents(category.amount || 0);
+
+        if (index === adjustableCategories.length - 1) {
+          category.amount = roundDraftAmount(category.title, remainingAdjustable);
+          return;
+        }
+
+        const scaledAmount = roundDraftAmount(category.title, (originalAmount / adjustableWeight) * remainingAdjustable);
+        category.amount = scaledAmount;
+        remainingAdjustable = roundToCents(Math.max(0, remainingAdjustable - scaledAmount));
+        adjustableWeight = roundToCents(Math.max(0, adjustableWeight - originalAmount));
+      });
+    }
+
     fixedTotal = roundToCents(fixedCategories.reduce((sum, category) => sum + category.amount, 0));
   }
 
@@ -1878,14 +1982,23 @@ function applyAssistantBudgetDraft() {
   renderLedgerAssistant();
 
   window.setTimeout(() => {
-    const draft = buildAssistantAllocationState(allocationState.monthlyIncome);
-    allocationState = draft;
-    ledgerAssistantState.isSubmitting = false;
-    ledgerAssistantState.hasBuiltDraft = true;
-    ledgerAssistantState.dismissed = true;
-    renderAllocationScreen();
-    renderLedgerAssistant();
-    closeModal(ledgerAssistantModal);
+    try {
+      const draft = buildAssistantAllocationState(allocationState.monthlyIncome);
+      allocationState = draft;
+      ledgerAssistantState.hasBuiltDraft = true;
+      ledgerAssistantState.dismissed = true;
+      renderAllocationScreen();
+      closeModal(ledgerAssistantModal);
+    } catch (error) {
+      setProfileFeedback(
+        ledgerAssistantFeedback,
+        error instanceof Error ? error.message : 'We could not build the draft. Try adjusting your answers.',
+        'error'
+      );
+    } finally {
+      ledgerAssistantState.isSubmitting = false;
+      renderLedgerAssistant();
+    }
   }, shouldReduceMotion() ? 0 : 220);
 }
 
@@ -1898,6 +2011,19 @@ function handleLedgerAssistantNext() {
   }
 
   setProfileFeedback(ledgerAssistantFeedback, '');
+
+  if (ledgerAssistantState.currentStep === 2) {
+    const monthlyIncome = roundToCents(allocationState?.monthlyIncome || 0);
+    const manualExpenseTotal = getAssistantManualExpenseTotal();
+    if (manualExpenseTotal > monthlyIncome) {
+      setProfileFeedback(
+        ledgerAssistantFeedback,
+        'Those entered expenses are above your monthly income. Lower one or more amounts first.',
+        'error'
+      );
+      return;
+    }
+  }
 
   if (ledgerAssistantState.currentStep < 3) {
     ledgerAssistantState.currentStep += 1;
@@ -5157,12 +5283,43 @@ ledgerAssistantModal?.addEventListener('click', event => {
     return;
   }
 
+  if (event.target.closest('[data-assistant-expense-input]')) {
+    return;
+  }
+
   const option = event.target.closest('[data-assistant-choice]');
   if (!option) {
     return;
   }
 
   handleLedgerAssistantChoice(option.dataset.assistantChoice, option.dataset.assistantMulti === 'true');
+});
+assistantExpenseOptions?.addEventListener('input', event => {
+  const input = event.target.closest('[data-assistant-expense-input]');
+  if (!input) {
+    return;
+  }
+
+  const normalized = String(input.value || '').replace(/[^0-9.]/g, '');
+  if (normalized !== input.value) {
+    input.value = normalized;
+  }
+
+  ledgerAssistantState.answers.expenseAmounts = {
+    ...ledgerAssistantState.answers.expenseAmounts,
+    [input.dataset.assistantExpenseInput]: normalized
+  };
+});
+assistantExpenseOptions?.addEventListener('keydown', event => {
+  const option = event.target.closest('[data-assistant-choice]');
+  if (!option || event.target.closest('[data-assistant-expense-input]')) {
+    return;
+  }
+
+  if (event.key === 'Enter' || event.key === ' ') {
+    event.preventDefault();
+    handleLedgerAssistantChoice(option.dataset.assistantChoice, option.dataset.assistantMulti === 'true');
+  }
 });
 ledgerAssistantBack?.addEventListener('click', handleLedgerAssistantBack);
 ledgerAssistantNext?.addEventListener('click', handleLedgerAssistantNext);
