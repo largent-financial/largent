@@ -933,24 +933,16 @@
 
       <div class="review-sheet-transaction" id="review-sheet-transaction"></div>
 
-      <label class="field review-sheet-memo-field">
-        <span>Memo</span>
-        <input id="review-sheet-memo" type="text" placeholder="Optional note" autocomplete="off" />
+      <label class="field review-sheet-category-field">
+        <span>Category</span>
+        <select id="review-sheet-category-select" aria-label="Budget category"></select>
       </label>
-
-      <button class="review-sheet-category-toggle" type="button" id="review-sheet-category-toggle" hidden aria-expanded="true" aria-controls="review-sheet-category-panel">
-        More categories
-      </button>
-      <div class="review-sheet-category-panel" id="review-sheet-category-panel">
-        <div class="review-sheet-category-list" id="review-sheet-category-list" role="radiogroup" aria-label="Budget categories"></div>
-      </div>
 
       <p class="form-feedback review-sheet-feedback" id="review-sheet-feedback" role="status" aria-live="polite"></p>
 
       <div class="modal-actions review-sheet-actions">
-        <button class="button button-secondary" type="button" id="review-sheet-dismiss">Dismiss</button>
         <button class="button button-secondary" type="button" id="review-sheet-cancel">Cancel</button>
-        <button class="button button-primary" type="button" id="review-sheet-save">Save to category</button>
+        <button class="button button-primary" type="button" id="review-sheet-save">Save</button>
       </div>
     </div>
   </div>

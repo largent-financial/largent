@@ -3263,6 +3263,9 @@ h3 {
   flex-direction: column;
   gap: 0;
   min-height: 0;
+  width: min(100%, 520px);
+  max-height: min(72dvh, 560px);
+  padding: 18px 16px 16px;
 }
 
 .bottom-sheet-head {
@@ -3276,7 +3279,11 @@ h3 {
 }
 
 .review-sheet-transaction {
-  margin-top: 16px;
+  margin-top: 14px;
+  display: grid;
+  gap: 10px;
+  align-items: start;
+  padding: 14px;
 }
 
 .review-sheet-transaction-label {
@@ -3287,21 +3294,40 @@ h3 {
   color: var(--primary-deep);
 }
 
-.review-sheet-transaction-amount-wrap {
-  display: grid;
-  justify-items: end;
-  gap: 8px;
-}
-
 .review-sheet-transaction-amount {
   letter-spacing: -0.04em;
+  font-size: 1.18rem;
 }
 
-.review-sheet-memo-field {
+.review-sheet-transaction-top {
+  display: flex;
+  align-items: start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.review-sheet-transaction-top strong:first-child {
+  font-size: 1rem;
+  line-height: 1.2;
+}
+
+.review-sheet-transaction-meta {
+  display: grid;
+  gap: 3px;
+}
+
+.review-sheet-transaction-meta span {
+  color: var(--muted);
+  font-size: 0.92rem;
+  line-height: 1.35;
+}
+
+.review-sheet-category-field {
   margin-top: 14px;
 }
 
-.review-sheet-memo-field input {
+.review-sheet-category-field select {
+  width: 100%;
   min-height: 48px;
 }
 
@@ -3409,7 +3435,7 @@ h3 {
 
 .review-sheet-feedback {
   min-height: 20px;
-  margin: 10px 0 0;
+  margin: 8px 0 0;
 }
 
 #review-sheet-modal .review-sheet-category-list {
@@ -3490,9 +3516,20 @@ h3 {
   position: relative;
   z-index: 2;
   flex-shrink: 0;
-  margin-top: 12px;
-  padding-top: 12px;
+  margin-top: 10px;
+  padding-top: 10px;
   background: linear-gradient(180deg, rgba(255, 255, 255, 0), rgba(255, 255, 255, 0.96) 18%, rgba(255, 255, 255, 1));
+}
+
+#review-sheet-modal .bottom-sheet-copy {
+  max-width: 24ch;
+  font-size: 0.98rem;
+  line-height: 1.42;
+}
+
+#review-sheet-modal .modal-close {
+  width: 54px;
+  height: 54px;
 }
 
 .transaction-form {
@@ -4357,49 +4394,58 @@ h3 {
   }
 
   #review-sheet-modal .bottom-sheet-card {
-    max-height: min(92dvh, 860px);
+    width: min(100%, calc(100vw - 18px));
+    max-height: min(68dvh, 500px);
+    padding: 16px 14px 14px;
   }
 
-  #review-sheet-modal[data-preview='true'] .review-sheet-transaction {
-    padding: 14px;
+  #review-sheet-modal .bottom-sheet-head {
+    gap: 4px;
+  }
+
+  #review-sheet-modal .bottom-sheet-copy {
+    max-width: none;
+    font-size: 0.94rem;
+  }
+
+  #review-sheet-modal .modal-close {
+    width: 50px;
+    height: 50px;
+  }
+
+  .review-sheet-transaction {
+    margin-top: 12px;
+    padding: 12px;
+  }
+
+  .review-sheet-transaction-top {
+    align-items: center;
+  }
+
+  .review-sheet-transaction-top strong:first-child {
+    font-size: 0.98rem;
+  }
+
+  .review-sheet-transaction-amount {
+    font-size: 1.08rem;
+  }
+
+  .review-sheet-transaction-meta span {
+    font-size: 0.88rem;
+  }
+
+  .review-sheet-category-field {
+    margin-top: 12px;
+  }
+
+  .review-sheet-category-field select {
+    min-height: 46px;
+  }
+
+  #review-sheet-modal .review-sheet-actions {
     gap: 10px;
-    align-items: end;
-  }
-
-  #review-sheet-modal[data-preview='true'] .review-sheet-transaction-copy strong {
-    font-size: 1.05rem;
-  }
-
-  #review-sheet-modal[data-preview='true'] .review-sheet-transaction-amount {
-    font-size: 1.32rem;
-  }
-
-  #review-sheet-modal[data-preview='true'] .review-sheet-suggestions-list {
-    margin-inline: -2px;
-    padding-inline: 2px;
-  }
-
-  #review-sheet-modal[data-preview='true'] .review-suggestion-chip {
-    min-width: 142px;
-    padding: 10px 11px;
-  }
-
-  #review-sheet-modal[data-preview='true'] .review-sheet-category-toggle {
-    margin-top: 10px;
-  }
-
-  #review-sheet-modal[data-preview='true'] .review-sheet-category-list {
-    max-height: min(24dvh, 180px);
-  }
-
-  #review-sheet-modal[data-preview='true'] .review-sheet-actions {
-    gap: 10px;
-  }
-
-  #review-sheet-modal[data-preview='true'] #review-sheet-save {
-    order: -1;
-  }
-
+    margin-top: 8px;
+    padding-top: 8px;
   }
 
   .plaid-account-meta {
@@ -4423,61 +4469,52 @@ h3 {
     padding: 20px 16px 18px;
   }
 
-  .review-sheet-category-list {
-    max-height: min(48dvh, 440px);
-  }
-
-  #review-sheet-modal .review-sheet-category-list {
-    max-height: none;
-    padding-bottom: 16px;
-  }
-
   .transaction-card {
     padding: 10px;
   }
 
-.plaid-card,
-.review-card {
-  padding: 12px;
-}
+  .plaid-card,
+  .review-card {
+    padding: 12px;
+  }
 
-.plaid-toggle-row {
-  display: flex;
-  align-items: center;
-  justify-content: flex-start;
-  gap: 12px;
-}
+  .plaid-toggle-row {
+    display: flex;
+    align-items: center;
+    justify-content: flex-start;
+    gap: 12px;
+  }
 
-.plaid-collapse-button {
-  flex: 1;
-  min-width: 0;
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  padding: 0;
-  border: 0;
-  background: transparent;
-  color: inherit;
-  text-align: left;
-  cursor: pointer;
-}
+  .plaid-collapse-button {
+    flex: 1;
+    min-width: 0;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 0;
+    border: 0;
+    background: transparent;
+    color: inherit;
+    text-align: left;
+    cursor: pointer;
+  }
 
-.plaid-collapse-chevron {
-  margin-left: auto;
-  font-size: 1.1rem;
-  color: var(--muted);
-  transform: rotate(0deg);
-  transition: transform 180ms ease, color 180ms ease;
-}
+  .plaid-collapse-chevron {
+    margin-left: auto;
+    font-size: 1.1rem;
+    color: var(--muted);
+    transform: rotate(0deg);
+    transition: transform 180ms ease, color 180ms ease;
+  }
 
-.plaid-card-expanded .plaid-collapse-chevron {
-  transform: rotate(180deg);
-  color: var(--primary-deep);
-}
+  .plaid-card-expanded .plaid-collapse-chevron {
+    transform: rotate(180deg);
+    color: var(--primary-deep);
+  }
 
-.plaid-card-body {
-  margin-top: 12px;
-}
+  .plaid-card-body {
+    margin-top: 12px;
+  }
 
   .header-dropdown {
     min-width: 190px;
