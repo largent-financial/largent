@@ -2637,6 +2637,29 @@ function closePremiumBankModal() {
   closeModal(premiumBankModal);
 }
 
+function handlePlaidDashboardToggle() {
+  if (!currentUser) {
+    openModal(authModal);
+    return;
+  }
+
+  const summary = plaidState.summary;
+  const accounts = flattenPlaidAccounts(plaidState.items);
+  const activeConnected = summary?.activeConnectedAccounts ?? accounts.length;
+
+  if (!isPremiumActive()) {
+    openPremiumBankModal();
+    return;
+  }
+
+  if (activeConnected > 0) {
+    openProfileModal('banking');
+    return;
+  }
+
+  startPlaidLinkFlow();
+}
+
 function openPremiumBillingExperience(message = '') {
   if (!currentUser) {
     return;
