@@ -2592,7 +2592,7 @@ function renderReviewQueue() {
   } else if (reviewState.loading) {
     setReviewFeedback('Loading bank activity review queue…', 'neutral');
   } else if (queueCount > 0) {
-    setReviewFeedback('Open any new debit and use the suggested categories to sort it faster.', 'neutral');
+    setReviewFeedback('Open any new debit and assign it to the category that fits best.', 'neutral');
   } else {
     setReviewFeedback('You are caught up. New posted debits will show up here for review.', 'neutral');
   }
@@ -2637,9 +2637,7 @@ function renderReviewQueue() {
 }
 
 function renderReviewSheet() {
-  const reviewSheetSuggestions = document.getElementById('review-sheet-suggestions');
-  const reviewSheetSuggestionsList = document.getElementById('review-sheet-suggestions-list');
-  if (!reviewSheetTransaction || !reviewSheetCategoryList || !reviewSheetMemo || !reviewSheetCopy || !reviewSheetFeedback || !reviewSheetSuggestions || !reviewSheetSuggestionsList || !reviewSheetCategoryToggle || !reviewSheetCategoryPanel) {
+  if (!reviewSheetTransaction || !reviewSheetCategoryList || !reviewSheetMemo || !reviewSheetCopy || !reviewSheetFeedback || !reviewSheetCategoryToggle || !reviewSheetCategoryPanel) {
     return;
   }
 
@@ -2647,8 +2645,6 @@ function renderReviewSheet() {
   if (!activeReview) {
     reviewSheetTransaction.innerHTML = '';
     reviewSheetCategoryList.innerHTML = '';
-    reviewSheetSuggestionsList.innerHTML = '';
-    reviewSheetSuggestions.hidden = true;
     reviewSheetCategoryToggle.hidden = true;
     reviewSheetCategoryPanel.hidden = false;
     reviewSheetMemo.value = '';
@@ -2688,27 +2684,6 @@ function renderReviewSheet() {
     `;
 
   const categories = getDashboardCategories().filter(category => category.allocated > 0 && category.title.trim());
-  const suggestedMatches = getSuggestedCategoryMatches(activeReview);
-  const suggestedIds = new Set(suggestedMatches.map(match => match.category.id));
-
-  reviewSheetSuggestions.hidden = !suggestedMatches.length;
-  if (reviewSheetSuggestionsCopy) {
-    reviewSheetSuggestionsCopy.textContent = isPreview
-      ? 'Tap a quick category below.'
-      : 'Quick picks based on this merchant.';
-  }
-  reviewSheetSuggestionsList.innerHTML = suggestedMatches
-    .map(match => `
-      <button
-        class="review-suggestion-chip${reviewState.selectedCategoryId === match.category.id ? ' review-suggestion-chip-active' : ''}"
-        type="button"
-        data-review-category="${match.category.id}"
-      >
-        <strong>${match.category.title}</strong>
-        <span>${formatCurrencyPrecise(match.category.allocated)}</span>
-      </button>
-    `)
-    .join('');
 
   reviewSheetCategoryToggle.hidden = !isPreview;
   reviewSheetCategoryToggle.setAttribute('aria-expanded', String(!isPreview || reviewSheetCategoriesExpanded));
@@ -2730,7 +2705,7 @@ function renderReviewSheet() {
       >
         <span class="review-category-copy">
           <strong>${category.title}</strong>
-          <span>${formatCurrencyPrecise(category.allocated)}${suggestedIds.has(category.id) ? ' · Suggested' : ''}</span>
+          <span>${formatCurrencyPrecise(category.allocated)}</span>
         </span>
       </button>
     `)
@@ -2751,8 +2726,7 @@ function openReviewSheet(reviewId) {
   reviewSheetCategoriesExpanded = true;
   const activeReview = getActiveReviewItem();
   const firstCategoryId = getDashboardCategories().find(category => category.allocated > 0 && category.title.trim())?.id || null;
-  const suggestedCategoryId = getSuggestedCategoryMatches(activeReview, 1)[0]?.category?.id || null;
-  reviewState.selectedCategoryId = activeReview?.budgetCategoryId || suggestedCategoryId || firstCategoryId;
+  reviewState.selectedCategoryId = activeReview?.budgetCategoryId || firstCategoryId;
   renderReviewSheet();
   openModal(reviewSheetModal);
 }
@@ -3220,6 +3194,9 @@ function openModal(modal) {
     return;
   }
 
+  document.documentElement.style.overflow = 'hidden';
+  document.body.style.overflow = 'hidden';
+  document.body.style.touchAction = 'none';
   modal.hidden = false;
   requestAnimationFrame(() => modal.classList.add('modal-open'));
 }
@@ -3233,6 +3210,12 @@ function closeModal(modal) {
   window.setTimeout(() => {
     if (!modal.classList.contains('modal-open')) {
       modal.hidden = true;
+      const anyOpenModals = document.querySelector('.modal-shell.modal-open');
+      if (!anyOpenModals) {
+        document.documentElement.style.overflow = '';
+        document.body.style.overflow = '';
+        document.body.style.touchAction = '';
+      }
     }
   }, 220);
 }

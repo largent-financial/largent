@@ -480,8 +480,12 @@
     <section class="screen" data-screen="dashboard" aria-labelledby="dashboard-title">
       <div class="dashboard-shell">
         <header class="dashboard-top">
-          <div>
+          <div class="dashboard-title-wrap">
             <h2 id="dashboard-title"><span id="dashboard-month-title">July 2026</span> Dashboard</h2>
+            <span class="dashboard-plaid-badge">
+              <img src="./plaid transparent.png" alt="Plaid logo" />
+              <span>Powered by Plaid</span>
+            </span>
           </div>
           <button class="button button-secondary dashboard-chip" type="button" id="dashboard-back">Back to ledger</button>
         </header>
@@ -553,12 +557,9 @@
           <article class="plaid-card card" id="plaid-card" aria-labelledby="plaid-sync-title">
             <div class="plaid-toggle-row">
               <button class="plaid-collapse-button" type="button" id="plaid-collapse-button" aria-expanded="false" aria-controls="plaid-card-body">
-                <div class="plaid-brand-mark">
-                  <img src="./plaid transparent.png" alt="Plaid logo" />
-                </div>
                 <div class="plaid-toggle-copy">
                   <h3 id="plaid-sync-title">Bank sync</h3>
-                  <p class="plaid-powered">Powered by Plaid</p>
+                  <p class="plaid-powered">Connect and manage linked accounts.</p>
                 </div>
                 <span class="plaid-collapse-chevron" aria-hidden="true">⌄</span>
               </button>
@@ -947,14 +948,6 @@
         <span>Memo</span>
         <input id="review-sheet-memo" type="text" placeholder="Optional note" autocomplete="off" />
       </label>
-
-      <div class="review-sheet-suggestions" id="review-sheet-suggestions" hidden>
-        <div class="review-sheet-suggestions-head">
-          <strong>Suggested categories</strong>
-          <span id="review-sheet-suggestions-copy">Quick picks based on this merchant.</span>
-        </div>
-        <div class="review-sheet-suggestions-list" id="review-sheet-suggestions-list"></div>
-      </div>
 
       <button class="review-sheet-category-toggle" type="button" id="review-sheet-category-toggle" hidden aria-expanded="true" aria-controls="review-sheet-category-panel">
         More categories

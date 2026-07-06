@@ -2335,6 +2335,36 @@ h3 {
   padding-inline: 14px;
 }
 
+.dashboard-title-wrap {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.dashboard-plaid-badge {
+  min-height: 34px;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 12px;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  background: #fff;
+  color: var(--muted);
+  font-size: 0.8rem;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.dashboard-plaid-badge img {
+  width: 18px;
+  height: 18px;
+  object-fit: contain;
+}
+
 .plaid-card,
 .review-card {
   background: #fff;
@@ -2358,7 +2388,7 @@ h3 {
 
 .plaid-toggle-row {
   display: grid;
-  grid-template-columns: auto minmax(0, 1fr) auto;
+  grid-template-columns: minmax(0, 1fr) auto;
   align-items: center;
   gap: 14px;
 }
@@ -3052,6 +3082,7 @@ h3 {
   display: flex;
   flex: 1 1 auto;
   overflow: hidden;
+  overscroll-behavior: contain;
 }
 
 .review-category-option {
@@ -3081,7 +3112,9 @@ h3 {
   min-height: 0;
   margin-top: 12px;
   padding-right: 2px;
-  padding-bottom: 12px;
+  padding-bottom: 18px;
+  overscroll-behavior: contain;
+  touch-action: pan-y;
 }
 
 #review-sheet-modal[data-preview='true'] .bottom-sheet-head {
@@ -3904,6 +3937,23 @@ h3 {
   .review-live-pill {
     min-height: 34px;
     font-size: 0.78rem;
+  }
+
+  .dashboard-title-wrap {
+    align-items: flex-start;
+    flex-direction: column;
+    gap: 8px;
+  }
+
+  .dashboard-plaid-badge {
+    min-height: 32px;
+    padding: 6px 10px;
+    font-size: 0.72rem;
+  }
+
+  .dashboard-plaid-badge img {
+    width: 16px;
+    height: 16px;
   }
 
   .bank-sync-toggle {
