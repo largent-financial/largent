@@ -2417,7 +2417,7 @@ function createDashboardStateFromAllocation() {
       title: section.title,
       categories: section.categories.map(category => ({
         id: category.id,
-        title: category.title,
+        title: normalizeCategoryTitle(category.title),
         allocated: roundToCents(category.amount),
         spent: roundToCents(previousSpentByCategory[category.id] || 0)
       }))
@@ -2717,151 +2717,174 @@ function renderInsightsScreen() {
   const allocated = getDashboardAllocatedTotal();
   const spent = getDashboardSpentTotal();
   const left = getDashboardRemainingTotal();
-  const categories = getDashboardCategories().filter(category => category.allocated > 0);
-  const sortedBySpent = [...categories].sort((leftItem, rightItem) => rightItem.spent - leftItem.spent || rightItem.allocated - leftItem.allocated);
-  const sortedByRemainingPercent = [...categories].sort((leftItem, rightItem) => {
-    const leftPercent = leftItem.allocated > 0 ? (leftItem.allocated - leftItem.spent) / leftItem.allocated : -Infinity;
-    const rightPercent = rightItem.allocated > 0 ? (rightItem.allocated - rightItem.spent) / rightItem.allocated : -Infinity;
-    return rightPercent - leftPercent;
-  });
-  const normalizedCategories = categories.map(category => ({
-    ...category,
-    normalizedTitle: category.title.trim().toLowerCase(),
-  }));
-  const attentionCategories = [...categories]
-    .map(category => {
-      const remaining = roundToCents(category.allocated - category.spent);
-      const remainingPercent = category.allocated > 0 ? roundToCents((remaining / category.allocated) * 100) : 0;
-      return { ...category, remaining, remainingPercent };
-    })
-    .filter(category => category.remainingPercent <= 30)
-    .sort((leftItem, rightItem) => leftItem.remainingPercent - rightItem.remainingPercent || rightItem.spent - leftItem.spent)
-    .slice(0, 4);
-  const shareCategories = [...categories]
-    .sort((leftItem, rightItem) => rightItem.allocated - leftItem.allocated)
-    .slice(0, 5);
-  const topCategory = sortedBySpent[0] || null;
-  const healthiestCategory = sortedByRemainingPercent.find(category => category.allocated > 0) || null;
-  const paceRatio = allocated > 0 ? spent / allocated : 0;
-  const pacePercent = allocated > 0 ? Math.round((spent / allocated) * 100) : 0;
-  const ringPalette = ['#62de6a', '#2fb83a', '#1f7f2b', '#a7efb0', '#f0c84b'];
-
-  const savedKeys = new Set(['investments', 'emergency savings', 'short term savings', 'longterm savings', 'longterm / home savings']);
-  const needsKeys = new Set(['rent', 'car payment', 'car insurance', 'student loans', 'groceries', 'gas', 'charitable donations']);
-  const discretionaryKeys = new Set(['fun', 'subscriptions']);
-
-  const groupedTotals = normalizedCategories.reduce((totals, category) => {
-    if (savedKeys.has(category.normalizedTitle)) {
-      totals.saved += category.allocated;
-    } else if (needsKeys.has(category.normalizedTitle)) {
-      totals.needs += category.allocated;
-    } else if (discretionaryKeys.has(category.normalizedTitle)) {
-      totals.discretionary += category.allocated;
-    } else {
-      totals.needs += category.allocated;
-    }
-    return totals;
-  }, { saved: 0, needs: 0, discretionary: 0 });
-
-  const targetCounts = categories.reduce((counts, category) => {
-    const remaining = roundToCents(category.allocated - category.spent);
-    if (remaining < 0 || getProgressTone(category) === 'danger') {
-      counts.offTarget += 1;
-    } else if (getProgressTone(category) === 'warning') {
-      counts.watch += 1;
-    } else {
-      counts.onTrack += 1;
-    }
-    return counts;
-  }, { onTrack: 0, watch: 0, offTarget: 0 });
-
-  insightsMonthTitle.textContent = dashboardState.monthLabel;
+  insightsMonthTitle.textContent = dashboardState.monthLabel || getCurrentMonthLabel();
   insightsTotalAllocated.textContent = formatCurrencyPrecise(allocated);
   insightsTotalSpent.textContent = formatCurrencyPrecise(spent);
   insightsLeftToSpend.textContent = formatCurrencyPrecise(left);
   insightsRingTotal.textContent = formatCurrencyPrecise(allocated);
-  insightsBulletFill.style.width = `${Math.max(0, Math.min(100, pacePercent))}%`;
+  insightsBulletFill.style.width = `${Math.max(0, Math.min(100, allocated > 0 ? Math.round((spent / allocated) * 100) : 0))}%`;
   insightsBulletSpent.textContent = `${formatCurrencyPrecise(spent)} spent`;
   insightsBulletBudget.textContent = `${formatCurrencyPrecise(allocated)} budgeted`;
-  insightsOnTrackCount.textContent = String(targetCounts.onTrack);
-  insightsWatchCount.textContent = String(targetCounts.watch);
-  insightsOffTargetCount.textContent = String(targetCounts.offTarget);
-  insightsBalanceSavedBar.style.width = `${allocated > 0 ? (groupedTotals.saved / allocated) * 100 : 0}%`;
-  insightsBalanceNeedsBar.style.width = `${allocated > 0 ? (groupedTotals.needs / allocated) * 100 : 0}%`;
-  insightsBalanceDiscretionaryBar.style.width = `${allocated > 0 ? (groupedTotals.discretionary / allocated) * 100 : 0}%`;
-  insightsBalanceSaved.textContent = `${allocated > 0 ? Math.round((groupedTotals.saved / allocated) * 100) : 0}%`;
-  insightsBalanceNeeds.textContent = `${allocated > 0 ? Math.round((groupedTotals.needs / allocated) * 100) : 0}%`;
-  insightsBalanceDiscretionary.textContent = `${allocated > 0 ? Math.round((groupedTotals.discretionary / allocated) * 100) : 0}%`;
 
-  if (topCategory) {
-    insightsTopCategory.textContent = topCategory.title;
-  } else {
-    insightsTopCategory.textContent = 'No spending yet';
-  }
-
-  if (healthiestCategory) {
-    insightsHealthiestCategory.textContent = healthiestCategory.title;
-  } else {
-    insightsHealthiestCategory.textContent = 'No categories yet';
-  }
-
-  if (paceRatio > 1) {
-    insightsPaceTitle.textContent = 'Off target';
-    insightsPaceCopy.textContent = `${pacePercent}% used`;
-  } else if (paceRatio > 0.8) {
-    insightsPaceTitle.textContent = 'Watch pace';
-    insightsPaceCopy.textContent = `${pacePercent}% used`;
-  } else if (paceRatio > 0.4) {
-    insightsPaceTitle.textContent = 'On track';
-    insightsPaceCopy.textContent = `${pacePercent}% used`;
-  } else {
-    insightsPaceTitle.textContent = 'Plenty left';
-    insightsPaceCopy.textContent = `${pacePercent}% used`;
-  }
-
-  if (shareCategories.length) {
-    let runningAngle = 0;
-    const ringStops = shareCategories.map((category, index) => {
-      const share = allocated > 0 ? (category.allocated / allocated) * 360 : 0;
-      const start = runningAngle;
-      const end = runningAngle + share;
-      runningAngle = end;
-      return `${ringPalette[index % ringPalette.length]} ${start}deg ${end}deg`;
+  const categories = getDashboardCategories()
+    .map(category => ({
+      ...category,
+      title: normalizeCategoryTitle(category.title),
+      allocated: roundToCents(category.allocated || 0),
+      spent: roundToCents(category.spent || 0)
+    }))
+    .filter(category => category.allocated > 0);
+  try {
+    const sortedBySpent = [...categories].sort((leftItem, rightItem) => rightItem.spent - leftItem.spent || rightItem.allocated - leftItem.allocated);
+    const sortedByRemainingPercent = [...categories].sort((leftItem, rightItem) => {
+      const leftPercent = leftItem.allocated > 0 ? (leftItem.allocated - leftItem.spent) / leftItem.allocated : -Infinity;
+      const rightPercent = rightItem.allocated > 0 ? (rightItem.allocated - rightItem.spent) / rightItem.allocated : -Infinity;
+      return rightPercent - leftPercent;
     });
+    const normalizedCategories = categories.map(category => ({
+      ...category,
+      normalizedTitle: String(category.title || '').trim().toLowerCase(),
+    }));
+    const attentionCategories = [...categories]
+      .map(category => {
+        const remaining = roundToCents(category.allocated - category.spent);
+        const remainingPercent = category.allocated > 0 ? roundToCents((remaining / category.allocated) * 100) : 0;
+        return { ...category, remaining, remainingPercent };
+      })
+      .filter(category => category.remainingPercent <= 30)
+      .sort((leftItem, rightItem) => leftItem.remainingPercent - rightItem.remainingPercent || rightItem.spent - leftItem.spent)
+      .slice(0, 4);
+    const shareCategories = [...categories]
+      .sort((leftItem, rightItem) => rightItem.allocated - leftItem.allocated)
+      .slice(0, 5);
+    const topCategory = sortedBySpent[0] || null;
+    const healthiestCategory = sortedByRemainingPercent.find(category => category.allocated > 0) || null;
+    const paceRatio = allocated > 0 ? spent / allocated : 0;
+    const pacePercent = allocated > 0 ? Math.round((spent / allocated) * 100) : 0;
+    const ringPalette = ['#62de6a', '#2fb83a', '#1f7f2b', '#a7efb0', '#f0c84b'];
 
-    if (runningAngle < 360) {
-      ringStops.push(`#edf3eb ${runningAngle}deg 360deg`);
+    const savedKeys = new Set(['investments', 'emergency savings', 'short term savings', 'longterm savings', 'longterm / home savings']);
+    const needsKeys = new Set(['rent', 'car payment', 'car insurance', 'student loans', 'groceries', 'gas', 'charitable donations']);
+    const discretionaryKeys = new Set(['fun', 'subscriptions']);
+
+    const groupedTotals = normalizedCategories.reduce((totals, category) => {
+      if (savedKeys.has(category.normalizedTitle)) {
+        totals.saved += category.allocated;
+      } else if (needsKeys.has(category.normalizedTitle)) {
+        totals.needs += category.allocated;
+      } else if (discretionaryKeys.has(category.normalizedTitle)) {
+        totals.discretionary += category.allocated;
+      } else {
+        totals.needs += category.allocated;
+      }
+      return totals;
+    }, { saved: 0, needs: 0, discretionary: 0 });
+
+    const targetCounts = categories.reduce((counts, category) => {
+      const remaining = roundToCents(category.allocated - category.spent);
+      if (remaining < 0 || getProgressTone(category) === 'danger') {
+        counts.offTarget += 1;
+      } else if (getProgressTone(category) === 'warning') {
+        counts.watch += 1;
+      } else {
+        counts.onTrack += 1;
+      }
+      return counts;
+    }, { onTrack: 0, watch: 0, offTarget: 0 });
+
+    insightsBulletFill.style.width = `${Math.max(0, Math.min(100, pacePercent))}%`;
+    insightsBulletSpent.textContent = `${formatCurrencyPrecise(spent)} spent`;
+    insightsBulletBudget.textContent = `${formatCurrencyPrecise(allocated)} budgeted`;
+    insightsOnTrackCount.textContent = String(targetCounts.onTrack);
+    insightsWatchCount.textContent = String(targetCounts.watch);
+    insightsOffTargetCount.textContent = String(targetCounts.offTarget);
+    insightsBalanceSavedBar.style.width = `${allocated > 0 ? (groupedTotals.saved / allocated) * 100 : 0}%`;
+    insightsBalanceNeedsBar.style.width = `${allocated > 0 ? (groupedTotals.needs / allocated) * 100 : 0}%`;
+    insightsBalanceDiscretionaryBar.style.width = `${allocated > 0 ? (groupedTotals.discretionary / allocated) * 100 : 0}%`;
+    insightsBalanceSaved.textContent = `${allocated > 0 ? Math.round((groupedTotals.saved / allocated) * 100) : 0}%`;
+    insightsBalanceNeeds.textContent = `${allocated > 0 ? Math.round((groupedTotals.needs / allocated) * 100) : 0}%`;
+    insightsBalanceDiscretionary.textContent = `${allocated > 0 ? Math.round((groupedTotals.discretionary / allocated) * 100) : 0}%`;
+
+    if (topCategory) {
+      insightsTopCategory.textContent = topCategory.title;
+    } else {
+      insightsTopCategory.textContent = 'No spending yet';
     }
 
-    insightsRingChart.style.background = `conic-gradient(${ringStops.join(', ')})`;
-    insightsRingLegend.innerHTML = shareCategories.map((category, index) => {
-      const share = allocated > 0 ? Math.round((category.allocated / allocated) * 100) : 0;
-      return `
-        <div class="insight-ring-legend-item">
-          <span class="insight-ring-swatch" style="background:${ringPalette[index % ringPalette.length]}"></span>
-          <div>
-            <strong>${category.title}</strong>
-            <span>${share}% · ${formatCurrencyPrecise(category.allocated)}</span>
-          </div>
-        </div>
-      `;
-    }).join('');
-  } else {
-    insightsRingChart.style.background = 'conic-gradient(#edf3eb 0deg 360deg)';
-    insightsRingLegend.innerHTML = '<div class="insight-empty">No allocation mix yet.</div>';
-  }
+    if (healthiestCategory) {
+      insightsHealthiestCategory.textContent = healthiestCategory.title;
+    } else {
+      insightsHealthiestCategory.textContent = 'No categories yet';
+    }
 
-  insightsAttentionList.innerHTML = attentionCategories.length
-    ? attentionCategories.map(category => `
-        <div class="insight-list-item">
-          <div>
-            <strong>${category.title}</strong>
-            <span>${Math.max(0, category.remainingPercent)}% left</span>
+    if (paceRatio > 1) {
+      insightsPaceTitle.textContent = 'Off target';
+      insightsPaceCopy.textContent = `${pacePercent}% used`;
+    } else if (paceRatio > 0.8) {
+      insightsPaceTitle.textContent = 'Watch pace';
+      insightsPaceCopy.textContent = `${pacePercent}% used`;
+    } else if (paceRatio > 0.4) {
+      insightsPaceTitle.textContent = 'On track';
+      insightsPaceCopy.textContent = `${pacePercent}% used`;
+    } else {
+      insightsPaceTitle.textContent = 'Plenty left';
+      insightsPaceCopy.textContent = `${pacePercent}% used`;
+    }
+
+    if (shareCategories.length) {
+      let runningAngle = 0;
+      const ringStops = shareCategories.map((category, index) => {
+        const share = allocated > 0 ? (category.allocated / allocated) * 360 : 0;
+        const start = runningAngle;
+        const end = runningAngle + share;
+        runningAngle = end;
+        return `${ringPalette[index % ringPalette.length]} ${start}deg ${end}deg`;
+      });
+
+      if (runningAngle < 360) {
+        ringStops.push(`#edf3eb ${runningAngle}deg 360deg`);
+      }
+
+      insightsRingChart.style.background = `conic-gradient(${ringStops.join(', ')})`;
+      insightsRingLegend.innerHTML = shareCategories.map((category, index) => {
+        const share = allocated > 0 ? Math.round((category.allocated / allocated) * 100) : 0;
+        return `
+          <div class="insight-ring-legend-item">
+            <span class="insight-ring-swatch" style="background:${ringPalette[index % ringPalette.length]}"></span>
+            <div>
+              <strong>${category.title}</strong>
+              <span>${share}% · ${formatCurrencyPrecise(category.allocated)}</span>
+            </div>
           </div>
-          <em>${category.remaining < 0 ? `${formatCurrencyPrecise(Math.abs(category.remaining))} over` : formatCurrencyPrecise(category.remaining)}</em>
-        </div>
-      `).join('')
-    : '<div class="insight-empty">No categories are under pressure right now.</div>';
+        `;
+      }).join('');
+    } else {
+      insightsRingChart.style.background = 'conic-gradient(#edf3eb 0deg 360deg)';
+      insightsRingLegend.innerHTML = '<div class="insight-empty">No allocation mix yet.</div>';
+    }
+
+    insightsAttentionList.innerHTML = attentionCategories.length
+      ? attentionCategories.map(category => `
+          <div class="insight-list-item">
+            <div>
+              <strong>${category.title}</strong>
+              <span>${Math.max(0, category.remainingPercent)}% left</span>
+            </div>
+            <em>${category.remaining < 0 ? `${formatCurrencyPrecise(Math.abs(category.remaining))} over` : formatCurrencyPrecise(category.remaining)}</em>
+          </div>
+        `).join('')
+      : '<div class="insight-empty">No categories are under pressure right now.</div>';
+  } catch (error) {
+    console.error('Insights render failed', error);
+    insightsTopCategory.textContent = 'Unavailable';
+    insightsHealthiestCategory.textContent = 'Unavailable';
+    insightsOnTrackCount.textContent = '0';
+    insightsWatchCount.textContent = '0';
+    insightsOffTargetCount.textContent = '0';
+    insightsRingChart.style.background = 'conic-gradient(#edf3eb 0deg 360deg)';
+    insightsRingLegend.innerHTML = '<div class="insight-empty">Insights could not be fully calculated.</div>';
+    insightsAttentionList.innerHTML = '<div class="insight-empty">Tracking data is available, but this summary needs a refresh.</div>';
+  }
 }
 
 function renderTransactionCategoryOptions() {
@@ -3840,7 +3863,7 @@ function hydrateDashboardFromBudget(budget) {
         .filter(category => !category.isArchived)
         .map(category => ({
           id: category.id,
-          title: category.title,
+          title: normalizeCategoryTitle(category.title),
           allocated: roundToCents(category.amount || 0),
           spent: 0
         }))
