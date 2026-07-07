@@ -2,6 +2,7 @@ const screens = [...document.querySelectorAll('.screen')];
 const authToggles = [...document.querySelectorAll('[data-auth-mode]')];
 const authForms = [...document.querySelectorAll('.auth-form')];
 const openAuthButtons = [...document.querySelectorAll('[data-open-auth]')];
+const footerNavButtons = [...document.querySelectorAll('[data-nav-screen]')];
 const headerAuthButton = document.getElementById('header-auth-button');
 const headerAccountMenu = document.getElementById('header-account-menu');
 const headerSignoutButton = document.getElementById('header-signout-button');
@@ -104,6 +105,18 @@ const dashboardTotalSpent = document.getElementById('dashboard-total-spent');
 const dashboardLeftToSpend = document.getElementById('dashboard-left-to-spend');
 const dashboardStatusPill = document.getElementById('dashboard-status-pill');
 const dashboardBackButton = document.getElementById('dashboard-back');
+const insightsMonthTitle = document.getElementById('insights-month-title');
+const insightsTotalAllocated = document.getElementById('insights-total-allocated');
+const insightsTotalSpent = document.getElementById('insights-total-spent');
+const insightsLeftToSpend = document.getElementById('insights-left-to-spend');
+const insightsTopCategory = document.getElementById('insights-top-category');
+const insightsTopCategoryCopy = document.getElementById('insights-top-category-copy');
+const insightsHealthiestCategory = document.getElementById('insights-healthiest-category');
+const insightsHealthiestCategoryCopy = document.getElementById('insights-healthiest-category-copy');
+const insightsPaceTitle = document.getElementById('insights-pace-title');
+const insightsPaceCopy = document.getElementById('insights-pace-copy');
+const insightsAttentionList = document.getElementById('insights-attention-list');
+const insightsShareList = document.getElementById('insights-share-list');
 const plaidConnectButton = document.getElementById('plaid-connect-button');
 const reviewCard = document.getElementById('review-card');
 const reviewRefreshButton = document.getElementById('review-refresh-button');
@@ -902,12 +915,22 @@ function showScreen(screenName) {
     screen.classList.toggle('screen-active', isActive);
   });
 
+  footerNavButtons.forEach(button => {
+    const isActive = button.dataset.navScreen === screenName;
+    button.classList.toggle('app-footer-item-active', isActive);
+    button.setAttribute('aria-current', isActive ? 'page' : 'false');
+  });
+
   if (screenName === 'dashboard' && currentUser) {
     loadPlaidStatus({ silent: true });
     loadPlaidReviewQueue({ silent: true });
     loadPremiumStatus()
       .then(() => renderPlaidSection())
       .catch(() => renderPlaidSection());
+  }
+
+  if (screenName === 'insights' && currentUser) {
+    renderInsightsScreen();
   }
 
   if (screenName === 'allocation') {
@@ -917,6 +940,18 @@ function showScreen(screenName) {
   }
 
   window.scrollTo({ top: 0, behavior: 'smooth' });
+}
+
+function getUserInitials() {
+  if (!currentUser?.firstName && !currentUser?.lastName) {
+    return 'LI';
+  }
+
+  return [currentUser.firstName?.[0], currentUser.lastName?.[0]]
+    .filter(Boolean)
+    .join('')
+    .toUpperCase()
+    .slice(0, 2);
 }
 
 function readReviewDeepLinkFromUrl() {
@@ -2609,6 +2644,134 @@ function getDashboardStatusCopy(remaining) {
   return 'On track';
 }
 
+function renderInsightsScreen() {
+  if (
+    !insightsMonthTitle ||
+    !insightsTotalAllocated ||
+    !insightsTotalSpent ||
+    !insightsLeftToSpend ||
+    !insightsTopCategory ||
+    !insightsTopCategoryCopy ||
+    !insightsHealthiestCategory ||
+    !insightsHealthiestCategoryCopy ||
+    !insightsPaceTitle ||
+    !insightsPaceCopy ||
+    !insightsAttentionList ||
+    !insightsShareList
+  ) {
+    return;
+  }
+
+  if (!dashboardState) {
+    insightsMonthTitle.textContent = getCurrentMonthLabel();
+    insightsTotalAllocated.textContent = formatCurrencyPrecise(0);
+    insightsTotalSpent.textContent = formatCurrencyPrecise(0);
+    insightsLeftToSpend.textContent = formatCurrencyPrecise(0);
+    insightsTopCategory.textContent = '—';
+    insightsTopCategoryCopy.textContent = 'Save a ledger and start tracking spending to see category highlights.';
+    insightsHealthiestCategory.textContent = '—';
+    insightsHealthiestCategoryCopy.textContent = 'The category with the most room left will show up here.';
+    insightsPaceTitle.textContent = 'Waiting on data';
+    insightsPaceCopy.textContent = 'Once spending starts, Largent will summarize the pace of the month here.';
+    insightsAttentionList.innerHTML = '<div class="insight-empty">No categories to review yet.</div>';
+    insightsShareList.innerHTML = '<div class="insight-empty">No allocation mix yet.</div>';
+    return;
+  }
+
+  const allocated = getDashboardAllocatedTotal();
+  const spent = getDashboardSpentTotal();
+  const left = getDashboardRemainingTotal();
+  const categories = getDashboardCategories().filter(category => category.allocated > 0);
+  const sortedBySpent = [...categories].sort((leftItem, rightItem) => rightItem.spent - leftItem.spent || rightItem.allocated - leftItem.allocated);
+  const sortedByRemainingPercent = [...categories].sort((leftItem, rightItem) => {
+    const leftPercent = leftItem.allocated > 0 ? (leftItem.allocated - leftItem.spent) / leftItem.allocated : -Infinity;
+    const rightPercent = rightItem.allocated > 0 ? (rightItem.allocated - rightItem.spent) / rightItem.allocated : -Infinity;
+    return rightPercent - leftPercent;
+  });
+  const attentionCategories = [...categories]
+    .map(category => {
+      const remaining = roundToCents(category.allocated - category.spent);
+      const remainingPercent = category.allocated > 0 ? roundToCents((remaining / category.allocated) * 100) : 0;
+      return { ...category, remaining, remainingPercent };
+    })
+    .filter(category => category.remainingPercent <= 30)
+    .sort((leftItem, rightItem) => leftItem.remainingPercent - rightItem.remainingPercent || rightItem.spent - leftItem.spent)
+    .slice(0, 4);
+  const shareCategories = [...categories]
+    .sort((leftItem, rightItem) => rightItem.allocated - leftItem.allocated)
+    .slice(0, 5);
+  const topCategory = sortedBySpent[0] || null;
+  const healthiestCategory = sortedByRemainingPercent.find(category => category.allocated > 0) || null;
+  const paceRatio = allocated > 0 ? spent / allocated : 0;
+
+  insightsMonthTitle.textContent = dashboardState.monthLabel;
+  insightsTotalAllocated.textContent = formatCurrencyPrecise(allocated);
+  insightsTotalSpent.textContent = formatCurrencyPrecise(spent);
+  insightsLeftToSpend.textContent = formatCurrencyPrecise(left);
+
+  if (topCategory) {
+    insightsTopCategory.textContent = topCategory.title;
+    insightsTopCategoryCopy.textContent = `${formatCurrencyPrecise(topCategory.spent)} spent out of ${formatCurrencyPrecise(topCategory.allocated)} allocated.`;
+  } else {
+    insightsTopCategory.textContent = 'No spending yet';
+    insightsTopCategoryCopy.textContent = 'Once spending starts, the biggest category will show here.';
+  }
+
+  if (healthiestCategory) {
+    const remaining = roundToCents(healthiestCategory.allocated - healthiestCategory.spent);
+    const remainingPercent = healthiestCategory.allocated > 0 ? Math.max(0, roundToCents((remaining / healthiestCategory.allocated) * 100)) : 0;
+    insightsHealthiestCategory.textContent = healthiestCategory.title;
+    insightsHealthiestCategoryCopy.textContent = `${remainingPercent}% left, or ${formatCurrencyPrecise(remaining)} still available.`;
+  } else {
+    insightsHealthiestCategory.textContent = 'No categories yet';
+    insightsHealthiestCategoryCopy.textContent = 'Allocate your ledger first to see strongest categories.';
+  }
+
+  if (paceRatio > 1) {
+    insightsPaceTitle.textContent = 'Past plan';
+    insightsPaceCopy.textContent = 'You have spent more than the month currently supports. Tight categories need attention first.';
+  } else if (paceRatio > 0.8) {
+    insightsPaceTitle.textContent = 'Moving fast';
+    insightsPaceCopy.textContent = 'Spending is still inside the plan, but you are using most of the month’s room.';
+  } else if (paceRatio > 0.4) {
+    insightsPaceTitle.textContent = 'On track';
+    insightsPaceCopy.textContent = 'The month is pacing normally with room still available across the ledger.';
+  } else {
+    insightsPaceTitle.textContent = 'Early in the month';
+    insightsPaceCopy.textContent = 'Most of the plan is still open, so Largent is showing a wide cushion right now.';
+  }
+
+  insightsAttentionList.innerHTML = attentionCategories.length
+    ? attentionCategories.map(category => `
+        <div class="insight-list-item">
+          <div>
+            <strong>${category.title}</strong>
+            <span>${Math.max(0, category.remainingPercent)}% left</span>
+          </div>
+          <em>${category.remaining < 0 ? `${formatCurrencyPrecise(Math.abs(category.remaining))} over` : formatCurrencyPrecise(category.remaining)}</em>
+        </div>
+      `).join('')
+    : '<div class="insight-empty">No categories are under pressure right now.</div>';
+
+  insightsShareList.innerHTML = shareCategories.length
+    ? shareCategories.map(category => {
+        const share = allocated > 0 ? roundToCents((category.allocated / allocated) * 100) : 0;
+        return `
+          <div class="insight-share-row">
+            <div class="insight-share-copy">
+              <strong>${category.title}</strong>
+              <span>${formatCurrencyPrecise(category.allocated)}</span>
+            </div>
+            <div class="insight-share-bar">
+              <span style="width:${Math.max(4, Math.min(100, share))}%"></span>
+            </div>
+            <em>${share}%</em>
+          </div>
+        `;
+      }).join('')
+    : '<div class="insight-empty">No allocations to summarize yet.</div>';
+}
+
 function renderTransactionCategoryOptions() {
   if (!transactionCategorySelect) {
     return;
@@ -2740,6 +2903,7 @@ function renderDashboard() {
   }
 
   renderDashboardSummary();
+  renderInsightsScreen();
   renderPlaidSection();
   renderReviewQueue();
   renderTransactionCategoryOptions();
@@ -4485,13 +4649,13 @@ function updateHeaderAuthState() {
 
   const headerAuthLabel = headerAuthButton.querySelector('.header-link-label');
 
-  if (currentUser?.firstName && currentUser?.lastName) {
+  if (currentUser?.email) {
     if (headerAuthLabel) {
-      headerAuthLabel.textContent = `${currentUser.firstName} ${currentUser.lastName}`;
+      headerAuthLabel.textContent = getUserInitials();
     }
     headerAuthButton.removeAttribute('data-open-auth');
     headerAuthButton.classList.add('header-link-user');
-    headerAuthButton.setAttribute('aria-label', `Signed in as ${currentUser.firstName} ${currentUser.lastName}`);
+    headerAuthButton.setAttribute('aria-label', `Signed in as ${[currentUser.firstName, currentUser.lastName].filter(Boolean).join(' ') || currentUser.email}`);
     headerAuthButton.setAttribute('aria-expanded', 'false');
     return;
   }
@@ -5357,6 +5521,33 @@ profileConnectBankButton?.addEventListener('click', async () => {
 });
 
 dashboardBackButton?.addEventListener('click', () => showScreen('allocation'));
+footerNavButtons.forEach(button => {
+  button.addEventListener('click', () => {
+    const targetScreen = button.dataset.navScreen;
+    if (!targetScreen) {
+      return;
+    }
+
+    if (!currentUser && targetScreen !== 'landing') {
+      const authMode = targetScreen === 'step-a' ? 'signup' : 'login';
+      setAuthMode(authMode);
+      openModal(authModal);
+      return;
+    }
+
+    if ((targetScreen === 'allocation' || targetScreen === 'dashboard' || targetScreen === 'insights') && !allocationState && targetScreen !== 'dashboard') {
+      showScreen('step-a');
+      return;
+    }
+
+    if ((targetScreen === 'dashboard' || targetScreen === 'insights') && !dashboardState) {
+      showScreen('allocation');
+      return;
+    }
+
+    showScreen(targetScreen);
+  });
+});
 reviewRefreshButton?.addEventListener('click', syncPlaidTransactions);
 plaidConnectButton?.addEventListener('click', handlePlaidDashboardToggle);
 premiumBankClose?.addEventListener('click', closePremiumBankModal);
@@ -5477,6 +5668,7 @@ resetLedgerAssistantState();
 renderLedgerAssistant();
 renderPushAlertsUI();
 registerPushServiceWorker();
+showScreen('landing');
 loadCurrentUser();
 populateStates();
 stateSelect.value = 'Tennessee';
