@@ -109,14 +109,26 @@ const insightsMonthTitle = document.getElementById('insights-month-title');
 const insightsTotalAllocated = document.getElementById('insights-total-allocated');
 const insightsTotalSpent = document.getElementById('insights-total-spent');
 const insightsLeftToSpend = document.getElementById('insights-left-to-spend');
+const insightsBulletFill = document.getElementById('insights-bullet-fill');
+const insightsBulletSpent = document.getElementById('insights-bullet-spent');
+const insightsBulletBudget = document.getElementById('insights-bullet-budget');
+const insightsRingChart = document.getElementById('insights-ring-chart');
+const insightsRingTotal = document.getElementById('insights-ring-total');
+const insightsRingLegend = document.getElementById('insights-ring-legend');
+const insightsBalanceSavedBar = document.getElementById('insights-balance-saved-bar');
+const insightsBalanceNeedsBar = document.getElementById('insights-balance-needs-bar');
+const insightsBalanceDiscretionaryBar = document.getElementById('insights-balance-discretionary-bar');
+const insightsBalanceSaved = document.getElementById('insights-balance-saved');
+const insightsBalanceNeeds = document.getElementById('insights-balance-needs');
+const insightsBalanceDiscretionary = document.getElementById('insights-balance-discretionary');
+const insightsOnTrackCount = document.getElementById('insights-on-track-count');
+const insightsWatchCount = document.getElementById('insights-watch-count');
+const insightsOffTargetCount = document.getElementById('insights-off-target-count');
 const insightsTopCategory = document.getElementById('insights-top-category');
-const insightsTopCategoryCopy = document.getElementById('insights-top-category-copy');
 const insightsHealthiestCategory = document.getElementById('insights-healthiest-category');
-const insightsHealthiestCategoryCopy = document.getElementById('insights-healthiest-category-copy');
 const insightsPaceTitle = document.getElementById('insights-pace-title');
 const insightsPaceCopy = document.getElementById('insights-pace-copy');
 const insightsAttentionList = document.getElementById('insights-attention-list');
-const insightsShareList = document.getElementById('insights-share-list');
 const plaidConnectButton = document.getElementById('plaid-connect-button');
 const reviewCard = document.getElementById('review-card');
 const reviewRefreshButton = document.getElementById('review-refresh-button');
@@ -2650,14 +2662,26 @@ function renderInsightsScreen() {
     !insightsTotalAllocated ||
     !insightsTotalSpent ||
     !insightsLeftToSpend ||
-    !insightsTopCategory ||
-    !insightsTopCategoryCopy ||
-    !insightsHealthiestCategory ||
-    !insightsHealthiestCategoryCopy ||
     !insightsPaceTitle ||
     !insightsPaceCopy ||
-    !insightsAttentionList ||
-    !insightsShareList
+    !insightsBulletFill ||
+    !insightsBulletSpent ||
+    !insightsBulletBudget ||
+    !insightsRingChart ||
+    !insightsRingTotal ||
+    !insightsRingLegend ||
+    !insightsBalanceSavedBar ||
+    !insightsBalanceNeedsBar ||
+    !insightsBalanceDiscretionaryBar ||
+    !insightsBalanceSaved ||
+    !insightsBalanceNeeds ||
+    !insightsBalanceDiscretionary ||
+    !insightsOnTrackCount ||
+    !insightsWatchCount ||
+    !insightsOffTargetCount ||
+    !insightsTopCategory ||
+    !insightsHealthiestCategory ||
+    !insightsAttentionList
   ) {
     return;
   }
@@ -2667,14 +2691,26 @@ function renderInsightsScreen() {
     insightsTotalAllocated.textContent = formatCurrencyPrecise(0);
     insightsTotalSpent.textContent = formatCurrencyPrecise(0);
     insightsLeftToSpend.textContent = formatCurrencyPrecise(0);
-    insightsTopCategory.textContent = '—';
-    insightsTopCategoryCopy.textContent = 'Save a ledger and start tracking spending to see category highlights.';
-    insightsHealthiestCategory.textContent = '—';
-    insightsHealthiestCategoryCopy.textContent = 'The category with the most room left will show up here.';
     insightsPaceTitle.textContent = 'Waiting on data';
-    insightsPaceCopy.textContent = 'Once spending starts, Largent will summarize the pace of the month here.';
+    insightsPaceCopy.textContent = '0% used';
+    insightsBulletFill.style.width = '0%';
+    insightsBulletSpent.textContent = `${formatCurrencyPrecise(0)} spent`;
+    insightsBulletBudget.textContent = `${formatCurrencyPrecise(0)} budgeted`;
+    insightsRingChart.style.background = 'conic-gradient(#edf3eb 0deg 360deg)';
+    insightsRingTotal.textContent = formatCurrencyPrecise(0);
+    insightsRingLegend.innerHTML = '<div class="insight-empty">No allocation mix yet.</div>';
+    insightsBalanceSavedBar.style.width = '0%';
+    insightsBalanceNeedsBar.style.width = '0%';
+    insightsBalanceDiscretionaryBar.style.width = '0%';
+    insightsBalanceSaved.textContent = '0%';
+    insightsBalanceNeeds.textContent = '0%';
+    insightsBalanceDiscretionary.textContent = '0%';
+    insightsOnTrackCount.textContent = '0';
+    insightsWatchCount.textContent = '0';
+    insightsOffTargetCount.textContent = '0';
+    insightsTopCategory.textContent = '—';
+    insightsHealthiestCategory.textContent = '—';
     insightsAttentionList.innerHTML = '<div class="insight-empty">No categories to review yet.</div>';
-    insightsShareList.innerHTML = '<div class="insight-empty">No allocation mix yet.</div>';
     return;
   }
 
@@ -2688,6 +2724,10 @@ function renderInsightsScreen() {
     const rightPercent = rightItem.allocated > 0 ? (rightItem.allocated - rightItem.spent) / rightItem.allocated : -Infinity;
     return rightPercent - leftPercent;
   });
+  const normalizedCategories = categories.map(category => ({
+    ...category,
+    normalizedTitle: category.title.trim().toLowerCase(),
+  }));
   const attentionCategories = [...categories]
     .map(category => {
       const remaining = roundToCents(category.allocated - category.spent);
@@ -2703,42 +2743,112 @@ function renderInsightsScreen() {
   const topCategory = sortedBySpent[0] || null;
   const healthiestCategory = sortedByRemainingPercent.find(category => category.allocated > 0) || null;
   const paceRatio = allocated > 0 ? spent / allocated : 0;
+  const pacePercent = allocated > 0 ? Math.round((spent / allocated) * 100) : 0;
+  const ringPalette = ['#62de6a', '#2fb83a', '#1f7f2b', '#a7efb0', '#f0c84b'];
+
+  const savedKeys = new Set(['investments', 'emergency savings', 'short term savings', 'longterm savings', 'longterm / home savings']);
+  const needsKeys = new Set(['rent', 'car payment', 'car insurance', 'student loans', 'groceries', 'gas', 'charitable donations']);
+  const discretionaryKeys = new Set(['fun', 'subscriptions']);
+
+  const groupedTotals = normalizedCategories.reduce((totals, category) => {
+    if (savedKeys.has(category.normalizedTitle)) {
+      totals.saved += category.allocated;
+    } else if (needsKeys.has(category.normalizedTitle)) {
+      totals.needs += category.allocated;
+    } else if (discretionaryKeys.has(category.normalizedTitle)) {
+      totals.discretionary += category.allocated;
+    } else {
+      totals.needs += category.allocated;
+    }
+    return totals;
+  }, { saved: 0, needs: 0, discretionary: 0 });
+
+  const targetCounts = categories.reduce((counts, category) => {
+    const remaining = roundToCents(category.allocated - category.spent);
+    if (remaining < 0 || getProgressTone(category) === 'danger') {
+      counts.offTarget += 1;
+    } else if (getProgressTone(category) === 'warning') {
+      counts.watch += 1;
+    } else {
+      counts.onTrack += 1;
+    }
+    return counts;
+  }, { onTrack: 0, watch: 0, offTarget: 0 });
 
   insightsMonthTitle.textContent = dashboardState.monthLabel;
   insightsTotalAllocated.textContent = formatCurrencyPrecise(allocated);
   insightsTotalSpent.textContent = formatCurrencyPrecise(spent);
   insightsLeftToSpend.textContent = formatCurrencyPrecise(left);
+  insightsRingTotal.textContent = formatCurrencyPrecise(allocated);
+  insightsBulletFill.style.width = `${Math.max(0, Math.min(100, pacePercent))}%`;
+  insightsBulletSpent.textContent = `${formatCurrencyPrecise(spent)} spent`;
+  insightsBulletBudget.textContent = `${formatCurrencyPrecise(allocated)} budgeted`;
+  insightsOnTrackCount.textContent = String(targetCounts.onTrack);
+  insightsWatchCount.textContent = String(targetCounts.watch);
+  insightsOffTargetCount.textContent = String(targetCounts.offTarget);
+  insightsBalanceSavedBar.style.width = `${allocated > 0 ? (groupedTotals.saved / allocated) * 100 : 0}%`;
+  insightsBalanceNeedsBar.style.width = `${allocated > 0 ? (groupedTotals.needs / allocated) * 100 : 0}%`;
+  insightsBalanceDiscretionaryBar.style.width = `${allocated > 0 ? (groupedTotals.discretionary / allocated) * 100 : 0}%`;
+  insightsBalanceSaved.textContent = `${allocated > 0 ? Math.round((groupedTotals.saved / allocated) * 100) : 0}%`;
+  insightsBalanceNeeds.textContent = `${allocated > 0 ? Math.round((groupedTotals.needs / allocated) * 100) : 0}%`;
+  insightsBalanceDiscretionary.textContent = `${allocated > 0 ? Math.round((groupedTotals.discretionary / allocated) * 100) : 0}%`;
 
   if (topCategory) {
     insightsTopCategory.textContent = topCategory.title;
-    insightsTopCategoryCopy.textContent = `${formatCurrencyPrecise(topCategory.spent)} spent out of ${formatCurrencyPrecise(topCategory.allocated)} allocated.`;
   } else {
     insightsTopCategory.textContent = 'No spending yet';
-    insightsTopCategoryCopy.textContent = 'Once spending starts, the biggest category will show here.';
   }
 
   if (healthiestCategory) {
-    const remaining = roundToCents(healthiestCategory.allocated - healthiestCategory.spent);
-    const remainingPercent = healthiestCategory.allocated > 0 ? Math.max(0, roundToCents((remaining / healthiestCategory.allocated) * 100)) : 0;
     insightsHealthiestCategory.textContent = healthiestCategory.title;
-    insightsHealthiestCategoryCopy.textContent = `${remainingPercent}% left, or ${formatCurrencyPrecise(remaining)} still available.`;
   } else {
     insightsHealthiestCategory.textContent = 'No categories yet';
-    insightsHealthiestCategoryCopy.textContent = 'Allocate your ledger first to see strongest categories.';
   }
 
   if (paceRatio > 1) {
-    insightsPaceTitle.textContent = 'Past plan';
-    insightsPaceCopy.textContent = 'You have spent more than the month currently supports. Tight categories need attention first.';
+    insightsPaceTitle.textContent = 'Off target';
+    insightsPaceCopy.textContent = `${pacePercent}% used`;
   } else if (paceRatio > 0.8) {
-    insightsPaceTitle.textContent = 'Moving fast';
-    insightsPaceCopy.textContent = 'Spending is still inside the plan, but you are using most of the month’s room.';
+    insightsPaceTitle.textContent = 'Watch pace';
+    insightsPaceCopy.textContent = `${pacePercent}% used`;
   } else if (paceRatio > 0.4) {
     insightsPaceTitle.textContent = 'On track';
-    insightsPaceCopy.textContent = 'The month is pacing normally with room still available across the ledger.';
+    insightsPaceCopy.textContent = `${pacePercent}% used`;
   } else {
-    insightsPaceTitle.textContent = 'Early in the month';
-    insightsPaceCopy.textContent = 'Most of the plan is still open, so Largent is showing a wide cushion right now.';
+    insightsPaceTitle.textContent = 'Plenty left';
+    insightsPaceCopy.textContent = `${pacePercent}% used`;
+  }
+
+  if (shareCategories.length) {
+    let runningAngle = 0;
+    const ringStops = shareCategories.map((category, index) => {
+      const share = allocated > 0 ? (category.allocated / allocated) * 360 : 0;
+      const start = runningAngle;
+      const end = runningAngle + share;
+      runningAngle = end;
+      return `${ringPalette[index % ringPalette.length]} ${start}deg ${end}deg`;
+    });
+
+    if (runningAngle < 360) {
+      ringStops.push(`#edf3eb ${runningAngle}deg 360deg`);
+    }
+
+    insightsRingChart.style.background = `conic-gradient(${ringStops.join(', ')})`;
+    insightsRingLegend.innerHTML = shareCategories.map((category, index) => {
+      const share = allocated > 0 ? Math.round((category.allocated / allocated) * 100) : 0;
+      return `
+        <div class="insight-ring-legend-item">
+          <span class="insight-ring-swatch" style="background:${ringPalette[index % ringPalette.length]}"></span>
+          <div>
+            <strong>${category.title}</strong>
+            <span>${share}% · ${formatCurrencyPrecise(category.allocated)}</span>
+          </div>
+        </div>
+      `;
+    }).join('');
+  } else {
+    insightsRingChart.style.background = 'conic-gradient(#edf3eb 0deg 360deg)';
+    insightsRingLegend.innerHTML = '<div class="insight-empty">No allocation mix yet.</div>';
   }
 
   insightsAttentionList.innerHTML = attentionCategories.length
@@ -2752,24 +2862,6 @@ function renderInsightsScreen() {
         </div>
       `).join('')
     : '<div class="insight-empty">No categories are under pressure right now.</div>';
-
-  insightsShareList.innerHTML = shareCategories.length
-    ? shareCategories.map(category => {
-        const share = allocated > 0 ? roundToCents((category.allocated / allocated) * 100) : 0;
-        return `
-          <div class="insight-share-row">
-            <div class="insight-share-copy">
-              <strong>${category.title}</strong>
-              <span>${formatCurrencyPrecise(category.allocated)}</span>
-            </div>
-            <div class="insight-share-bar">
-              <span style="width:${Math.max(4, Math.min(100, share))}%"></span>
-            </div>
-            <em>${share}%</em>
-          </div>
-        `;
-      }).join('')
-    : '<div class="insight-empty">No allocations to summarize yet.</div>';
 }
 
 function renderTransactionCategoryOptions() {
