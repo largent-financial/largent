@@ -624,7 +624,6 @@
             <div class="section-head">
               <div>
                 <h3 id="insights-overview-title">Month overview</h3>
-                <p>A quick read on how the month is shaping up.</p>
               </div>
             </div>
             <div class="insight-hero-metrics">
@@ -643,42 +642,106 @@
             </div>
           </article>
 
-          <article class="insight-card card">
-            <span class="insight-label">Top spending category</span>
-            <strong id="insights-top-category">—</strong>
-            <p id="insights-top-category-copy">Once spending starts, this shows where the biggest share is going.</p>
+          <article class="insight-wide-card insight-bullet-card card" aria-labelledby="insights-bullet-title">
+            <div class="section-head">
+              <div>
+                <h3 id="insights-bullet-title">Spent vs budgeted</h3>
+              </div>
+            </div>
+            <div class="insight-bullet-top">
+              <strong id="insights-pace-title">On track</strong>
+              <span id="insights-pace-copy">0% used</span>
+            </div>
+            <div class="insight-bullet-chart">
+              <div class="insight-bullet-track">
+                <span id="insights-bullet-fill"></span>
+              </div>
+              <div class="insight-bullet-scale">
+                <span id="insights-bullet-spent">$0.00 spent</span>
+                <span id="insights-bullet-budget">$0.00 budgeted</span>
+              </div>
+            </div>
           </article>
 
-          <article class="insight-card card">
-            <span class="insight-label">Healthiest category</span>
-            <strong id="insights-healthiest-category">—</strong>
-            <p id="insights-healthiest-category-copy">This highlights the category with the most room still available.</p>
+          <article class="insight-wide-card card insight-ring-card" aria-labelledby="insights-ring-title">
+            <div class="section-head">
+              <div>
+                <h3 id="insights-ring-title">Spend allocation</h3>
+              </div>
+            </div>
+            <div class="insight-ring-layout">
+              <div class="insight-ring-chart" id="insights-ring-chart" aria-hidden="true">
+                <div class="insight-ring-center">
+                  <span>Allocated</span>
+                  <strong id="insights-ring-total">$0.00</strong>
+                </div>
+              </div>
+              <div class="insight-ring-legend" id="insights-ring-legend"></div>
+            </div>
           </article>
 
-          <article class="insight-card card">
-            <span class="insight-label">Spending pace</span>
-            <strong id="insights-pace-title">On track</strong>
-            <p id="insights-pace-copy">Your spending pace updates as the month moves forward.</p>
+          <article class="insight-wide-card insight-split-card card" aria-labelledby="insights-split-title">
+            <div class="section-head">
+              <div>
+                <h3 id="insights-split-title">Saved vs needs vs discretionary</h3>
+              </div>
+            </div>
+            <div class="insight-balance-bar" id="insights-balance-bar" aria-hidden="true">
+              <span class="insight-balance-segment insight-balance-segment-saved" id="insights-balance-saved-bar"></span>
+              <span class="insight-balance-segment insight-balance-segment-needs" id="insights-balance-needs-bar"></span>
+              <span class="insight-balance-segment insight-balance-segment-discretionary" id="insights-balance-discretionary-bar"></span>
+            </div>
+            <div class="insight-balance-stats">
+              <div class="insight-balance-stat">
+                <span>Saved + invested</span>
+                <strong id="insights-balance-saved">0%</strong>
+              </div>
+              <div class="insight-balance-stat">
+                <span>Needs</span>
+                <strong id="insights-balance-needs">0%</strong>
+              </div>
+              <div class="insight-balance-stat">
+                <span>Discretionary</span>
+                <strong id="insights-balance-discretionary">0%</strong>
+              </div>
+            </div>
           </article>
 
-          <article class="insight-wide-card card" aria-labelledby="insights-attention-title">
+          <article class="insight-card card insight-target-card" aria-labelledby="insights-target-title">
+            <span class="insight-label" id="insights-target-title">Target summary</span>
+            <div class="insight-target-grid">
+              <div class="insight-target-item">
+                <strong id="insights-on-track-count">0</strong>
+                <span>On track</span>
+              </div>
+              <div class="insight-target-item">
+                <strong id="insights-watch-count">0</strong>
+                <span>Watch</span>
+              </div>
+              <div class="insight-target-item">
+                <strong id="insights-off-target-count">0</strong>
+                <span>Off target</span>
+              </div>
+            </div>
+            <div class="insight-target-highlights">
+              <div>
+                <span class="insight-label">Top spend</span>
+                <strong id="insights-top-category">—</strong>
+              </div>
+              <div>
+                <span class="insight-label">Best cushion</span>
+                <strong id="insights-healthiest-category">—</strong>
+              </div>
+            </div>
+          </article>
+
+          <article class="insight-wide-card insight-attention-card card" aria-labelledby="insights-attention-title">
             <div class="section-head">
               <div>
                 <h3 id="insights-attention-title">Needs attention</h3>
-                <p>Categories getting tight first.</p>
               </div>
             </div>
             <div class="insight-list" id="insights-attention-list"></div>
-          </article>
-
-          <article class="insight-wide-card card" aria-labelledby="insights-share-title">
-            <div class="section-head">
-              <div>
-                <h3 id="insights-share-title">Where your plan is going</h3>
-                <p>Highest allocated categories this month.</p>
-              </div>
-            </div>
-            <div class="insight-share-list" id="insights-share-list"></div>
           </article>
         </section>
       </div>
