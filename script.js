@@ -2423,15 +2423,8 @@ function createDashboardStateFromAllocation() {
       }))
     })),
     transactions: previousTransactions
-      .filter(transaction => findCategoryInAllocation(transaction.categoryId))
-      .map(transaction => {
-        const categoryMatch = findCategoryInAllocation(transaction.categoryId);
-        return {
-          ...transaction,
-          categoryTitle: categoryMatch?.category.title || transaction.categoryTitle,
-          sectionTitle: categoryMatch?.section.title || transaction.sectionTitle
-        };
-      })
+      .map(remapTransactionToAllocation)
+      .filter(Boolean)
   };
 }
 
@@ -2445,6 +2438,54 @@ function findCategoryInAllocation(categoryId) {
     if (category) {
       return { section, category };
     }
+  }
+
+  return null;
+}
+
+function findCategoryInAllocationByTitle(categoryTitle) {
+  if (!allocationState) {
+    return null;
+  }
+
+  const normalizedTarget = normalizeCategoryTitle(categoryTitle);
+  if (!normalizedTarget) {
+    return null;
+  }
+
+  for (const section of allocationState.sections) {
+    const category = section.categories.find(item => normalizeCategoryTitle(item.title) === normalizedTarget);
+    if (category) {
+      return { section, category };
+    }
+  }
+
+  return null;
+}
+
+function remapTransactionToAllocation(transaction) {
+  if (!transaction || !allocationState) {
+    return null;
+  }
+
+  const directMatch = findCategoryInAllocation(transaction.categoryId);
+  if (directMatch) {
+    return {
+      ...transaction,
+      categoryId: directMatch.category.id,
+      categoryTitle: directMatch.category.title,
+      sectionTitle: directMatch.section.title
+    };
+  }
+
+  const titleMatch = findCategoryInAllocationByTitle(transaction.categoryTitle);
+  if (titleMatch) {
+    return {
+      ...transaction,
+      categoryId: titleMatch.category.id,
+      categoryTitle: titleMatch.category.title,
+      sectionTitle: titleMatch.section.title
+    };
   }
 
   return null;
@@ -3017,6 +3058,7 @@ function renderDashboard() {
     return;
   }
 
+  setAddSpendingExpanded(addSpendingExpanded, { skipFocus: true });
   renderDashboardSummary();
   renderInsightsScreen();
   renderPlaidSection();
@@ -3041,6 +3083,25 @@ function isPremiumActive() {
 
 function hasPaidPremiumSubscription() {
   return Boolean(profileState.premium?.subscription && isPremiumActive());
+}
+
+function setAddSpendingExpanded(isExpanded, { skipFocus = false } = {}) {
+  addSpendingExpanded = Boolean(isExpanded);
+
+  if (addSpendingToggle) {
+    addSpendingToggle.setAttribute('aria-expanded', addSpendingExpanded ? 'true' : 'false');
+    addSpendingToggle.classList.toggle('add-spending-pill-active', addSpendingExpanded);
+  }
+
+  if (addSpendingPanel) {
+    addSpendingPanel.hidden = !addSpendingExpanded;
+  }
+
+  if (addSpendingExpanded && !skipFocus) {
+    window.setTimeout(() => {
+      transactionAmountInput?.focus();
+    }, 120);
+  }
 }
 
 function openPremiumBankModal() {
@@ -4318,7 +4379,16 @@ function buildLedgerPayload() {
   const validCategoryIds = new Set(
     allocationState.sections.flatMap(section => section.categories.map(category => category.id))
   );
-  const transactions = (dashboardState?.transactions || []).filter(transaction => validCategoryIds.has(transaction.categoryId));
+  const transactions = (dashboardState?.transactions || [])
+    .map(transaction => {
+      if (validCategoryIds.has(transaction.categoryId)) {
+        return transaction;
+      }
+
+      return remapTransactionToAllocation(transaction);
+    })
+    .filter(Boolean)
+    .filter(transaction => validCategoryIds.has(transaction.categoryId));
 
   return {
     monthLabel: allocationState.monthLabel,
